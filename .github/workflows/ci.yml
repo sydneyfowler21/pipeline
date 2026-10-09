@@ -9,7 +9,8 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        # Public ECR mirror of the official image. Anonymous Docker Hub pulls are rate limited.
+        image: public.ecr.aws/docker/library/postgres:16
         env:
           POSTGRES_USER: pipeline
           POSTGRES_PASSWORD: pipeline
