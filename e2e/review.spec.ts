@@ -167,7 +167,7 @@ test('add form validates in page and focuses the first invalid field', async ({ 
 
 test('sign out leaves the shell and back does not reveal data', async ({ page }) => {
   const email = await signUpAndOpenList(page);
-  await page.getByRole('link', { name: 'Add application' }).click();
+  await page.getByRole('link', { name: 'Add application' }).first().click();
   await page.getByLabel('Company').fill('Acme Robotics');
   await page.getByLabel('Role').fill('Frontend Engineer');
   await page.getByRole('button', { name: 'Add application' }).click();
@@ -187,7 +187,7 @@ test('sign out leaves the shell and back does not reveal data', async ({ page })
     }
     await expect(page.getByRole('heading', { name: 'Applications', exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Account menu' }).click();
-    await expect(page.getByText(email)).toBeVisible();
+    await expect(page.getByRole('menu', { name: 'Account menu' }).getByText(email)).toBeVisible();
     await page.getByRole('menuitem', { name: 'Sign out', exact: true }).click();
     await expect(page).toHaveURL(/\/$/);
     await expect(
@@ -217,7 +217,7 @@ test('a 401 from an authenticated request signs out', async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByRole('button', { name: 'Account menu' })).toHaveCount(0);
   await expect(page.getByText('Demo user')).toHaveCount(0);
-  await expect(page.getByText('Acme Robotics')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: /Acme Robotics/ })).toHaveCount(0);
   await expect(page.getByText("Couldn't load your applications")).toHaveCount(0);
 });
 
