@@ -232,6 +232,9 @@ describe('auth', () => {
       body: { token: resetToken, password: nextPassword },
     });
     expect(reset.status).toBe(200);
+    expect(reset.headers.getSetCookie().some((cookie) => cookie.startsWith('__Host-sid='))).toBe(
+      false,
+    );
     const reused = await api(app, resetJar, '/api/auth/reset-password', {
       method: 'POST',
       body: { token: resetToken, password: 'horse-battery-staple-22' },
@@ -329,6 +332,55 @@ describe('auth', () => {
     );
     expect(afterChange.status).toBe(400);
     expect(await afterChange.json()).toEqual({ error: MSG.invalidToken });
+  });
+
+  it('rotates this device session on password change and signs everyone out on reset', async () => {
+    const current = new CookieJar();
+    const other = new CookieJar();
+    await signup(current, email);
+    await api(app, current, '/api/auth/verify-email', {
+      method: 'POST',
+      body: { token: tokenFrom(mail, 'Verify') },
+    });
+    expect((await login(app, current, email, password)).status).toBe(200);
+    expect((await login(app, other, email, password)).status).toBe(200);
+
+    await expectRotatedSession(
+      current,
+      other,
+      '/api/me/password',
+      password,
+      'horse-battery-staple-21',
+    );
+
+    const third = new CookieJar();
+    expect((await login(app, third, email, 'horse-battery-staple-21')).status).toBe(200);
+    await expectRotatedSession(
+      current,
+      third,
+      '/api/auth/change-password',
+      'horse-battery-staple-21',
+      'horse-battery-staple-23',
+    );
+
+    await withCsrf(app, current);
+    expect(
+      (await api(app, current, '/api/auth/request-reset', { method: 'POST', body: { email } }))
+        .status,
+    ).toBe(200);
+    const fourth = new CookieJar();
+    expect((await login(app, fourth, email, 'horse-battery-staple-23')).status).toBe(200);
+    const reset = await api(app, current, '/api/auth/reset-password', {
+      method: 'POST',
+      body: { token: tokenFrom(mail, 'Reset'), password: 'horse-battery-staple-24' },
+    });
+    expect(reset.status).toBe(200);
+    expect(reset.headers.getSetCookie().some((cookie) => cookie.startsWith('__Host-sid='))).toBe(
+      false,
+    );
+    expect((await api(app, current, '/api/auth/me')).status).toBe(401);
+    expect((await api(app, fourth, '/api/auth/me')).status).toBe(401);
+    expect(await db.select().from(sessions)).toHaveLength(0);
   });
 
   it('rate limits reset-token checks with one 429 body', async () => {
@@ -628,6 +680,70 @@ describe('auth', () => {
     const people = await db.select().from(users);
     expect(people.map((person) => person.email)).toEqual(['blair@example.test']);
   });
+
+  async function expectRotatedSession(
+    current: CookieJar,
+    other: CookieJar,
+    path: '/api/me/password' | '/api/auth/change-password',
+    currentPassword: string,
+    newPassword: string,
+  ) {
+    const before = await api(app, current, '/api/auth/sessions');
+    const beforeBody = (await before.json()) as {
+      sessions: Array<{ id: string; current: boolean }>;
+    };
+    const oldId = beforeBody.sessions.find((row) => row.current)?.id;
+    const oldCookie = current.get('__Host-sid');
+    expect(oldId).toBeTruthy();
+    expect(oldCookie).toBeTruthy();
+
+    await withCsrf(app, current);
+    const changed = await api(app, current, path, {
+      method: 'POST',
+      body: { currentPassword, newPassword },
+    });
+    expect(changed.status).toBe(200);
+    const issued = changed.headers
+      .getSetCookie()
+      .find((cookie) => cookie.startsWith('__Host-sid=') && !cookie.includes('Max-Age=0'));
+    expect(issued).toBeDefined();
+    expect(issued).toContain('HttpOnly');
+    expect(issued).toContain('Secure');
+    expect(issued).toContain('Path=/');
+    const newCookie = issued?.split(';')[0]?.slice('__Host-sid='.length);
+    expect(newCookie).toBeTruthy();
+    expect(newCookie).not.toBe(oldCookie);
+    expect(current.get('__Host-sid')).toBe(newCookie);
+
+    const me = await api(app, current, '/api/auth/me');
+    expect(me.status).toBe(200);
+    await withCsrf(app, current);
+    const onMe = await api(app, current, '/api/me/password', {
+      method: 'POST',
+      body: { currentPassword: 'wrong-current-password', newPassword: 'horse-battery-staple-77' },
+    });
+    expect(onMe.status).toBe(401);
+    expect(await onMe.json()).toEqual({ error: MSG.currentPassword });
+
+    const stale = new CookieJar();
+    stale.set('__Host-sid', oldCookie ?? '');
+    expect((await api(app, stale, '/api/auth/me')).status).toBe(401);
+    expect((await api(app, other, '/api/auth/me')).status).toBe(401);
+    expect(
+      await db
+        .select()
+        .from(sessions)
+        .where(eq(sessions.id, oldId ?? '')),
+    ).toHaveLength(0);
+
+    const after = await api(app, current, '/api/auth/sessions');
+    const afterBody = (await after.json()) as {
+      sessions: Array<{ id: string; current: boolean }>;
+    };
+    expect(afterBody.sessions).toHaveLength(1);
+    expect(afterBody.sessions[0]?.current).toBe(true);
+    expect(afterBody.sessions[0]?.id).not.toBe(oldId);
+  }
 
   async function failFrom(jar: CookieJar, secret: string) {
     return api(app, jar, '/api/auth/login', {

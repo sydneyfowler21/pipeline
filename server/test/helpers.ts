@@ -83,6 +83,11 @@ export class CookieJar {
   get(name: string): string | undefined {
     return this.cookies.get(name);
   }
+
+  set(name: string, value: string) {
+    if (!value) this.cookies.delete(name);
+    else this.cookies.set(name, value);
+  }
 }
 
 export async function api(
