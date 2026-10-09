@@ -226,9 +226,8 @@ function SessionItem({ row, nextId }: { row: SessionRow; nextId?: string }) {
 }
 
 function SignOutEverywhere({ count }: { count: number }) {
-  const queryClient = useQueryClient();
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const { refresh } = useAuth();
+  const { finishSignOut } = useAuth();
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
 
@@ -236,11 +235,17 @@ function SignOutEverywhere({ count }: { count: number }) {
     setPending(true);
     try {
       await apiJson('/api/auth/logout-all', { method: 'POST' });
-      queryClient.clear();
+      finishSignOut();
       toast.success('Signed out everywhere.');
-      window.location.assign('/');
-      await refresh();
     } catch (error) {
+      if (
+        error instanceof ApiError &&
+        error.status === 401 &&
+        error.body.error === 'Unauthorized'
+      ) {
+        finishSignOut();
+        return;
+      }
       toast.error(error instanceof ApiError ? friendlyError(error.body) : 'Could not sign out.');
       setPending(false);
     }

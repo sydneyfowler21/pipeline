@@ -1,3 +1,4 @@
+import { sessionEnded } from './session';
 import type { ApiBody } from './types';
 
 export class ApiError extends Error {
@@ -26,6 +27,18 @@ async function ensureCsrf(): Promise<string> {
   return csrfToken;
 }
 
+const CREDENTIAL_PATHS = new Set([
+  '/api/auth/login',
+  '/api/auth/signup',
+  '/api/auth/me',
+  '/api/auth/csrf',
+  '/api/auth/request-reset',
+  '/api/auth/reset-password',
+  '/api/auth/verify-email',
+  '/api/auth/logout',
+  '/api/auth/logout-all',
+]);
+
 export async function api(path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
   const method = (init.method ?? 'GET').toUpperCase();
@@ -33,7 +46,22 @@ export async function api(path: string, init: RequestInit = {}): Promise<Respons
     headers.set('X-CSRF-Token', await ensureCsrf());
     if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
   }
-  return fetch(path, { ...init, headers, credentials: 'same-origin' });
+  const response = await fetch(path, { ...init, headers, credentials: 'same-origin' });
+  if (await isExpiredSession(path, response)) sessionEnded();
+  return response;
+}
+
+async function isExpiredSession(path: string, response: Response): Promise<boolean> {
+  if (response.status !== 401) return false;
+  const pathname = path.split('?')[0] ?? path;
+  if (CREDENTIAL_PATHS.has(pathname)) return false;
+  try {
+    const body = (await response.clone().json()) as { error?: string };
+    if (body.error && body.error !== 'Unauthorized') return false;
+  } catch {
+    /* A 401 without JSON on an authenticated route is still a dead session. */
+  }
+  return true;
 }
 
 export async function apiJson<T>(path: string, init: RequestInit = {}): Promise<T> {

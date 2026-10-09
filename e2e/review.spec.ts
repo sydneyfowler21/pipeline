@@ -165,6 +165,62 @@ test('add form validates in page and focuses the first invalid field', async ({ 
   expect(validationMessage).toBe('');
 });
 
+test('sign out leaves the shell and back does not reveal data', async ({ page }) => {
+  const email = await signUpAndOpenList(page);
+  await page.getByRole('link', { name: 'Add application' }).click();
+  await page.getByLabel('Company').fill('Acme Robotics');
+  await page.getByLabel('Role').fill('Frontend Engineer');
+  await page.getByRole('button', { name: 'Add application' }).click();
+  await expect(page.getByRole('heading', { name: 'Acme Robotics' })).toBeVisible();
+  await page.getByRole('link', { name: 'All applications' }).click();
+  await expect(page.getByRole('heading', { name: 'Applications', exact: true })).toBeVisible();
+
+  for (const viewport of focusWidths) {
+    await page.setViewportSize(viewport);
+    await page.goto('/');
+    const heading = page.getByRole('heading', { level: 1 });
+    await expect(heading).toBeVisible();
+    if ((await heading.innerText()).includes('Track a job search')) {
+      await page.getByLabel('Email').fill(email);
+      await page.getByLabel('Password', { exact: true }).fill(password);
+      await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    }
+    await expect(page.getByRole('heading', { name: 'Applications', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Account menu' }).click();
+    await expect(page.getByText(email)).toBeVisible();
+    await page.getByRole('menuitem', { name: 'Sign out', exact: true }).click();
+    await expect(page).toHaveURL(/\/$/);
+    await expect(
+      page.getByRole('heading', { name: 'Track a job search the honest way' }),
+    ).toBeVisible();
+    await expect(page.getByText(email)).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Account menu' })).toHaveCount(0);
+    await page.goBack();
+    await expect(page).not.toHaveURL(/\/applications/);
+    await expect(page.getByText(email)).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Acme Robotics' })).toHaveCount(0);
+    await expect(page.getByText("Couldn't load your applications")).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Account menu' })).toHaveCount(0);
+  }
+});
+
+test('a 401 from an authenticated request signs out', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Try the demo' }).click();
+  await expect(page.getByRole('heading', { name: 'Applications', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: /Acme Robotics/ }).first()).toBeVisible();
+  await page.context().clearCookies();
+  await page.getByLabel('Search applications').fill('zz');
+  await expect(
+    page.getByRole('heading', { name: 'Track a job search the honest way' }),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Account menu' })).toHaveCount(0);
+  await expect(page.getByText('Demo user')).toHaveCount(0);
+  await expect(page.getByText('Acme Robotics')).toHaveCount(0);
+  await expect(page.getByText("Couldn't load your applications")).toHaveCount(0);
+});
+
 test('creating an account leaves the demo', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/');
@@ -175,6 +231,36 @@ test('creating an account leaves the demo', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Create an account' })).toBeVisible();
   await expect(page.getByText('Something went wrong')).toHaveCount(0);
 });
+
+const password = 'correct-horse-battery-e2e-91';
+
+async function signUpAndOpenList(page: Page): Promise<string> {
+  const email = `e2e.signout.${Date.now()}@example.test`;
+  await page.goto('/signup');
+  await page.getByLabel('Email').fill(email);
+  await page.getByLabel('Password', { exact: true }).fill(password);
+  await page.getByLabel('Confirm password').fill(password);
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await expect(page.getByRole('heading', { name: 'Check your email' })).toBeVisible();
+  const mailbox = await page.request.get('/api/test/mailbox');
+  expect(mailbox.ok()).toBeTruthy();
+  const messages = (await mailbox.json()) as {
+    messages: Array<{ to: string; text: string }>;
+  };
+  const token = messages.messages
+    .filter((message) => message.to === email)
+    .map((message) => message.text.match(/token=([A-Za-z0-9_-]+)/)?.[1])
+    .find(Boolean);
+  expect(token).toBeTruthy();
+  await page.goto(`/verify-email?token=${token}`);
+  await expect(page.getByRole('heading', { name: 'Email confirmed' })).toBeVisible();
+  await page.getByRole('link', { name: 'Go to sign in' }).click();
+  await page.getByLabel('Email').fill(email);
+  await page.getByLabel('Password', { exact: true }).fill(password);
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Applications', exact: true })).toBeVisible();
+  return email;
+}
 
 async function openDemoDetail(page: Page) {
   await page.setViewportSize({ width: 1280, height: 800 });

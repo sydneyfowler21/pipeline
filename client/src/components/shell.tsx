@@ -1,20 +1,18 @@
-import { useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, FlaskConical } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { apiJson } from '@/lib/api';
+import { ApiError, apiJson } from '@/lib/api';
 import { accountInitials, accountLabel, hoursLeft } from '@/lib/copy';
 import { Menu, MenuItem } from './kit';
 import { signOut, useAuth } from './auth-context';
 import { Wordmark } from './wordmark';
 
 export function Shell() {
-  const { user, loading, refresh } = useAuth();
+  const { user, loading, finishSignOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const settingsOn = location.pathname.startsWith('/settings');
-  const queryClient = useQueryClient();
   const leaveToSignup = useRef(false);
   const [resendIn, setResendIn] = useState(0);
   const [resending, setResending] = useState(false);
@@ -29,10 +27,16 @@ export function Shell() {
   if (!user) return <Navigate to={leaveToSignup.current ? '/signup' : '/'} replace />;
 
   async function leaveDemo() {
-    await signOut();
     leaveToSignup.current = true;
-    queryClient.setQueryData(['me'], null);
-    navigate('/signup', { replace: true });
+    try {
+      await signOut();
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status !== 401) {
+        leaveToSignup.current = false;
+        return;
+      }
+    }
+    finishSignOut('/signup');
   }
 
   async function resend() {
@@ -53,11 +57,16 @@ export function Shell() {
   }
 
   async function logout() {
-    await signOut();
-    queryClient.clear();
+    try {
+      await signOut();
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.body.error !== 'Unauthorized') {
+        toast.error('Could not sign out.');
+        return;
+      }
+    }
+    finishSignOut();
     toast.success('Signed out.');
-    navigate('/');
-    await refresh();
   }
 
   return (

@@ -1,18 +1,38 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, type ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api, apiJson } from '@/lib/api';
+import { registerSessionEnd } from '@/lib/session';
 import type { User } from '@/lib/types';
 
 type AuthValue = {
   user: User | null;
   loading: boolean;
   refresh: () => Promise<void>;
+  finishSignOut: (to?: '/' | '/signup') => void;
 };
+
+const USER_QUERY_KEYS = [['applications'], ['application'], ['sessions'], ['events']];
 
 const AuthContext = createContext<AuthValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const finishSignOut = useCallback(
+    (to: '/' | '/signup' = '/') => {
+      queryClient.setQueryData(['me'], null);
+      for (const queryKey of USER_QUERY_KEYS) {
+        void queryClient.cancelQueries({ queryKey });
+        queryClient.removeQueries({ queryKey });
+      }
+      navigate(to, { replace: to === '/signup' });
+    },
+    [navigate, queryClient],
+  );
+
+  useEffect(() => registerSessionEnd(() => finishSignOut()), [finishSignOut]);
+
   const me = useQuery({
     queryKey: ['me'],
     queryFn: async () => {
@@ -30,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refresh: async () => {
       await queryClient.invalidateQueries({ queryKey: ['me'] });
     },
+    finishSignOut,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
