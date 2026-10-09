@@ -80,7 +80,11 @@ There is **no status column**. Current stage = stage of the latest `stage_events
   if HIBP is down).
 - **Email verification** on sign-up. Unverified users can sign in but can't create applications.
 - **Password reset** by email: 32-byte random token, stored as SHA-256 hash, single use, 30-minute
-  expiry. Reset revokes all sessions.
+  expiry. Reset revokes all sessions. Any password change (reset completion or a signed-in password
+  change, including `POST /api/me/password`) expires every outstanding reset token, and any
+  email-change token if that kind exists, in the same transaction as the password update and the
+  session revoke. A token from before that change is rejected on both `GET` and `POST
+  /api/auth/reset-password` with the same generic invalid response as a missing token.
 - **Sessions**: server-side in Postgres; cookie `__Host-sid`, httpOnly, Secure, SameSite=Lax, Path=/.
   Idle timeout 7 days, absolute 30 days. Rotate session id on login, password change, 2FA change.
   "Sign out of all devices" deletes every session for the user. Session list shown in Settings.
@@ -91,6 +95,11 @@ There is **no status column**. Current stage = stage of the latest `stage_events
 - **Abuse**: rate limits per IP and per account on login, sign-up, reset request, and 2FA.
   Login is also limited per account plus trusted IP. The per-account login limit does not include
   the IP, so a new address does not refresh that budget.
+  `GET /api/auth/reset-password` uses the same limiter and the same 429 body as the other auth
+  routes: trusted IP (30 per 15 minutes), plus a token-hash prefix (10 per 15 minutes) and a global
+  cap (100 per hour). Over the limit the body is `{"error":"Too many requests"}` for every token.
+  A missing, used, expired, or revoked token is 400 `{"error":"Invalid or expired token"}` on both
+  GET and POST.
   Progressive lockout on login: 5 failures → 1 min, then doubling to a 1-hour cap.
   Lockout responses are deliberately generic for no-enumeration. A locked account, a wrong password,
   and an unknown email are the same 401, with body "Email or password is incorrect." and no
@@ -114,9 +123,14 @@ There is **no status column**. Current stage = stage of the latest `stage_events
   has fewer entries, or the chosen value is not an IP, use the socket address. Rate limits, sessions,
   `auth_events`, and demo seeding all use this one helper. Do not trust the leftmost hop.
 - Headers: strict CSP (`default-src 'self'`; no inline script), HSTS, X-Content-Type-Options,
-  Referrer-Policy strict-origin-when-cross-origin, frame-ancestors 'none'.
+  Referrer-Policy strict-origin-when-cross-origin, frame-ancestors 'none'. Permissions-Policy denies
+  unused features. Cross-Origin-Opener-Policy and Cross-Origin-Resource-Policy are `same-origin`.
+  `Cache-Control: no-store` on every `/api/auth` response and every `/api/me` response.
 - Every query is scoped by `user_id` server-side. Another user's id returns **404**, never 403.
 - Request body limit 64 KB. All inputs validated with zod. No secrets or tokens in logs.
+- **Validation status**: 400 is schema or shape validation (zod, including unknown fields rejected
+  by `.strict()`). 422 is a domain rule that the shape already passed (a future date, an earlier
+  stage event, a breached password, or `applied_on` cannot be changed).
 
 ## Demo
 - Open sign-up, plus a **Try the demo** button: creates a throwaway verified user (`is_demo`),

@@ -14,13 +14,25 @@ import type { AppDeps, AppEnv } from './deps.js';
 import { appOrigin } from './env.js';
 import { CSRF_COOKIE, SESSION_COOKIE, readCookie } from './http.js';
 import { MSG } from './messages.js';
-import { authRoutes } from './auth/routes.js';
+import { authRoutes, meRoutes } from './auth/routes.js';
 import { securityHeaders } from './security.js';
 
 export function createApp(deps: AppDeps) {
   const app = new Hono<AppEnv>();
 
   app.use('*', securityHeaders());
+  app.use('*', async (c, next) => {
+    await next();
+    const path = c.req.path;
+    if (
+      path === '/api/auth' ||
+      path.startsWith('/api/auth/') ||
+      path === '/api/me' ||
+      path.startsWith('/api/me/')
+    ) {
+      c.res.headers.set('Cache-Control', 'no-store');
+    }
+  });
   app.use(
     '*',
     bodyLimit({
@@ -74,6 +86,7 @@ export function createApp(deps: AppDeps) {
 
   app.get('/api/health', (c) => c.json({ ok: true }));
   app.route('/api/auth', authRoutes(deps));
+  app.route('/api', meRoutes(deps));
   app.route('/api', demoRoutes(deps));
   app.route('/api/applications', applicationRoutes(deps));
   mountClient(app);

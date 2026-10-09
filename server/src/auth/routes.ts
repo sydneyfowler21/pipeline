@@ -7,7 +7,7 @@ import {
   verifyEmailSchema,
 } from '@pipeline/shared';
 import { and, desc, eq, isNull } from 'drizzle-orm';
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { v7 as uuidv7 } from 'uuid';
 import { newToken, normalizeEmail, sessionIdForToken, sha256 } from '../crypto.js';
 import {
@@ -34,6 +34,7 @@ import {
 } from '../http.js';
 import { existingAccountEmail, lockoutEmail, resetEmail, verifyEmail } from '../mail/transport.js';
 import { MSG } from '../messages.js';
+import { replacePassword } from './credentials.js';
 import { dummyPasswordHash, hashPassword, verifyPassword } from './password.js';
 import {
   RATE,
@@ -356,6 +357,8 @@ export function authRoutes(deps: AppDeps) {
     return c.json({ message: MSG.signup });
   });
 
+  routes.get('/reset-password', (c) => checkResetToken(deps, c));
+
   routes.post('/reset-password', async (c) => {
     const parsed = resetPasswordSchema.safeParse(await readJson(c));
     if (!parsed.success) return c.json(invalidInput(parsed.error), 400);
@@ -370,10 +373,13 @@ export function authRoutes(deps: AppDeps) {
     if (user.isDemo) return c.json({ error: MSG.demoPassword }, 403);
 
     const passwordHash = await hashPassword(parsed.data.password);
-    const consumed = await consumeToken(deps, tokenRow.id, now);
-    if (!consumed) return c.json({ error: MSG.invalidToken }, 400);
-    await deps.db.update(users).set({ passwordHash }).where(eq(users.id, user.id));
-    await deps.db.delete(sessions).where(eq(sessions.userId, user.id));
+    const replaced = await replacePassword(deps.db, {
+      userId: user.id,
+      passwordHash,
+      now,
+      requiredTokenId: tokenRow.id,
+    });
+    if (!replaced) return c.json({ error: MSG.invalidToken }, 400);
     await audit(deps, {
       userId: user.id,
       kind: AUTH_EVENT.passwordReset,
@@ -384,40 +390,7 @@ export function authRoutes(deps: AppDeps) {
     return c.json({ ok: true });
   });
 
-  routes.post('/change-password', async (c) => {
-    const user = c.get('user');
-    if (!user) return c.json({ error: MSG.unauthorized }, 401);
-    if (user.isDemo) return c.json({ error: MSG.demoPassword }, 403);
-    const parsed = changePasswordSchema.safeParse(await readJson(c));
-    if (!parsed.success) return c.json(invalidInput(parsed.error), 400);
-    const breach = await deps.hibp(parsed.data.newPassword);
-    if (breach === true) return c.json({ error: MSG.pwned }, 422);
-
-    const currentHash = user.passwordHash ?? (await dummyPasswordHash());
-    const matches = await verifyPassword(currentHash, parsed.data.currentPassword);
-    if (!user.passwordHash || !matches) return c.json({ error: MSG.currentPassword }, 401);
-
-    const now = deps.clock.now();
-    const passwordHash = await hashPassword(parsed.data.newPassword);
-    await deps.db.update(users).set({ passwordHash }).where(eq(users.id, user.id));
-    await deps.db.delete(sessions).where(eq(sessions.userId, user.id));
-    const token = await openSession(
-      deps,
-      user.id,
-      clientIp(c, deps.env.TRUSTED_PROXY_HOPS),
-      userAgent(c),
-      now,
-    );
-    await audit(deps, {
-      userId: user.id,
-      kind: AUTH_EVENT.passwordChange,
-      ip: clientIp(c, deps.env.TRUSTED_PROXY_HOPS),
-      userAgent: userAgent(c),
-      now,
-    });
-    c.header('Set-Cookie', sessionCookie(token), { append: true });
-    return c.json({ ok: true });
-  });
+  routes.post('/change-password', (c) => changePassword(deps, c));
 
   routes.get('/me', (c) => {
     const user = c.get('user');
@@ -481,6 +454,81 @@ export function authRoutes(deps: AppDeps) {
   });
 
   return routes;
+}
+
+export function meRoutes(deps: AppDeps) {
+  const routes = new Hono<AppEnv>();
+  routes.post('/me/password', (c) => changePassword(deps, c));
+  return routes;
+}
+
+async function checkResetToken(deps: AppDeps, c: Context<AppEnv>) {
+  const now = deps.clock.now();
+  const ip = clientIp(c, deps.env.TRUSTED_PROXY_HOPS);
+  const token = c.req.query('token') ?? '';
+  const prefix = sha256(token).slice(0, 16);
+  const ipAllowed = await consumeRateLimit(
+    deps.db,
+    `reset-check-ip:${ip}`,
+    RATE.resetCheckIp.max,
+    RATE.resetCheckIp.windowMs,
+    now,
+  );
+  const prefixAllowed = await consumeRateLimit(
+    deps.db,
+    `reset-check-prefix:${prefix}`,
+    RATE.resetCheckPrefix.max,
+    RATE.resetCheckPrefix.windowMs,
+    now,
+  );
+  const globalAllowed = await consumeRateLimit(
+    deps.db,
+    'reset-check-global',
+    RATE.resetCheckGlobal.max,
+    RATE.resetCheckGlobal.windowMs,
+    now,
+  );
+  if (!ipAllowed || !prefixAllowed || !globalAllowed) {
+    return c.json({ error: MSG.rateLimited }, 429);
+  }
+  if (!token) return c.json({ error: MSG.invalidToken }, 400);
+  const tokenRow = await findLiveToken(deps, token, 'reset_password', now);
+  if (!tokenRow) return c.json({ error: MSG.invalidToken }, 400);
+  return c.json({ ok: true });
+}
+
+async function changePassword(deps: AppDeps, c: Context<AppEnv>) {
+  const user = c.get('user');
+  if (!user) return c.json({ error: MSG.unauthorized }, 401);
+  if (user.isDemo) return c.json({ error: MSG.demoPassword }, 403);
+  const parsed = changePasswordSchema.safeParse(await readJson(c));
+  if (!parsed.success) return c.json(invalidInput(parsed.error), 400);
+  const breach = await deps.hibp(parsed.data.newPassword);
+  if (breach === true) return c.json({ error: MSG.pwned }, 422);
+
+  const currentHash = user.passwordHash ?? (await dummyPasswordHash());
+  const matches = await verifyPassword(currentHash, parsed.data.currentPassword);
+  if (!user.passwordHash || !matches) return c.json({ error: MSG.currentPassword }, 401);
+
+  const now = deps.clock.now();
+  const passwordHash = await hashPassword(parsed.data.newPassword);
+  await replacePassword(deps.db, { userId: user.id, passwordHash, now });
+  const token = await openSession(
+    deps,
+    user.id,
+    clientIp(c, deps.env.TRUSTED_PROXY_HOPS),
+    userAgent(c),
+    now,
+  );
+  await audit(deps, {
+    userId: user.id,
+    kind: AUTH_EVENT.passwordChange,
+    ip: clientIp(c, deps.env.TRUSTED_PROXY_HOPS),
+    userAgent: userAgent(c),
+    now,
+  });
+  c.header('Set-Cookie', sessionCookie(token), { append: true });
+  return c.json({ ok: true });
 }
 
 async function findLiveToken(

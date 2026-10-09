@@ -9,6 +9,9 @@ export const RATE = {
   loginAccount: { max: 10, windowMs: 15 * 60 * 1000 },
   resetIp: { max: 5, windowMs: 60 * 60 * 1000 },
   resetAccount: { max: 3, windowMs: 60 * 60 * 1000 },
+  resetCheckIp: { max: 30, windowMs: 15 * 60 * 1000 },
+  resetCheckPrefix: { max: 10, windowMs: 15 * 60 * 1000 },
+  resetCheckGlobal: { max: 100, windowMs: 60 * 60 * 1000 },
   demoIp: { max: 10, windowMs: 60 * 60 * 1000 },
 } as const;
 

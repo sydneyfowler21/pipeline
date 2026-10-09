@@ -1,7 +1,8 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { consumeRateLimit, lockoutSeconds } from '../src/auth/rate-limit.js';
-import { sessions, users } from '../src/db/schema.js';
+import { authTokens, rateLimits, sessions, users } from '../src/db/schema.js';
+import { sha256 } from '../src/crypto.js';
 import { deleteExpiredDemoUsers } from '../src/demo.js';
 import { resolveMailTransport } from '../src/env.js';
 import { formatUnlockTime } from '../src/mail/transport.js';
@@ -86,6 +87,18 @@ describe('auth', () => {
     expect(health.headers.get('strict-transport-security')).toContain('max-age=31536000');
     expect(health.headers.get('x-content-type-options')).toBe('nosniff');
     expect(health.headers.get('referrer-policy')).toBe('strict-origin-when-cross-origin');
+    expect(health.headers.get('permissions-policy')).toContain('camera=()');
+    expect(health.headers.get('permissions-policy')).toContain('microphone=()');
+    expect(health.headers.get('permissions-policy')).toContain('geolocation=()');
+    expect(health.headers.get('cross-origin-opener-policy')).toBe('same-origin');
+    expect(health.headers.get('cross-origin-resource-policy')).toBe('same-origin');
+    expect(health.headers.get('cache-control')).not.toBe('no-store');
+
+    const csrf = await api(app, jar, '/api/auth/csrf');
+    expect(csrf.headers.get('cache-control')).toBe('no-store');
+    const anon = await api(app, new CookieJar(), '/api/auth/me');
+    expect(anon.status).toBe(401);
+    expect(anon.headers.get('cache-control')).toBe('no-store');
 
     await signup(jar, email);
     const token = tokenFrom(mail, 'Verify');
@@ -101,6 +114,19 @@ describe('auth', () => {
     expect(setCookie).toContain('SameSite=Lax');
     expect(setCookie).toContain('Path=/');
     expect(setCookie?.toLowerCase()).not.toContain('domain=');
+
+    const me = await api(app, jar, '/api/auth/me');
+    expect(me.headers.get('cache-control')).toBe('no-store');
+    const listed = await api(app, jar, '/api/applications');
+    expect(listed.headers.get('cache-control')).not.toBe('no-store');
+
+    await withCsrf(app, jar);
+    const changed = await api(app, jar, '/api/me/password', {
+      method: 'POST',
+      body: { currentPassword: 'not-the-password', newPassword: 'horse-battery-staple-77' },
+    });
+    expect(changed.status).toBe(401);
+    expect(changed.headers.get('cache-control')).toBe('no-store');
   });
 
   it('does not enumerate accounts on signup, login, or reset', async () => {
@@ -220,6 +246,141 @@ describe('auth', () => {
     const events = await api(app, again, '/api/auth/events');
     const body = (await events.json()) as { events: Array<{ kind: string }> };
     expect(body.events.map((event) => event.kind)).toContain('password_reset');
+  });
+
+  it('rejects a reset token on GET and POST after a password change', async () => {
+    const jar = new CookieJar();
+    const other = new CookieJar();
+    await signup(jar, email);
+    await api(app, jar, '/api/auth/verify-email', {
+      method: 'POST',
+      body: { token: tokenFrom(mail, 'Verify') },
+    });
+    expect((await login(app, jar, email, password)).status).toBe(200);
+    expect((await login(app, other, email, password)).status).toBe(200);
+
+    await withCsrf(app, jar);
+    expect(
+      (await api(app, jar, '/api/auth/request-reset', { method: 'POST', body: { email } })).status,
+    ).toBe(200);
+    const resetToken = tokenFrom(mail, 'Reset');
+    const live = await api(app, new CookieJar(), `/api/auth/reset-password?token=${resetToken}`);
+    expect(live.status).toBe(200);
+    expect(await live.json()).toEqual({ ok: true });
+
+    const nextPassword = 'horse-battery-staple-21';
+    const changed = await api(app, jar, '/api/me/password', {
+      method: 'POST',
+      body: { currentPassword: password, newPassword: nextPassword },
+    });
+    expect(changed.status).toBe(200);
+    expect(changed.headers.get('cache-control')).toBe('no-store');
+
+    const check = await api(app, new CookieJar(), `/api/auth/reset-password?token=${resetToken}`);
+    const missing = await api(
+      app,
+      new CookieJar(),
+      '/api/auth/reset-password?token=not-a-real-token',
+    );
+    expect(check.status).toBe(400);
+    expect(missing.status).toBe(400);
+    expect(await check.json()).toEqual({ error: MSG.invalidToken });
+    expect(await missing.json()).toEqual({ error: MSG.invalidToken });
+
+    const postJar = new CookieJar();
+    await withCsrf(app, postJar);
+    const posted = await api(app, postJar, '/api/auth/reset-password', {
+      method: 'POST',
+      body: { token: resetToken, password: 'horse-battery-staple-22' },
+    });
+    const postedMissing = await api(app, postJar, '/api/auth/reset-password', {
+      method: 'POST',
+      body: { token: 'not-a-real-token-value', password: 'horse-battery-staple-22' },
+    });
+    expect(posted.status).toBe(400);
+    expect(postedMissing.status).toBe(400);
+    expect(await posted.json()).toEqual({ error: MSG.invalidToken });
+    expect(await postedMissing.json()).toEqual({ error: MSG.invalidToken });
+
+    const stored = await db
+      .select()
+      .from(authTokens)
+      .where(eq(authTokens.tokenHash, sha256(resetToken)));
+    expect(stored[0]?.usedAt).not.toBeNull();
+    expect((await api(app, other, '/api/auth/me')).status).toBe(401);
+    expect((await login(app, new CookieJar(), email, password)).status).toBe(401);
+    expect((await login(app, new CookieJar(), email, 'horse-battery-staple-22')).status).toBe(401);
+    expect((await login(app, new CookieJar(), email, nextPassword)).status).toBe(200);
+
+    await withCsrf(app, jar);
+    expect(
+      (await api(app, jar, '/api/auth/request-reset', { method: 'POST', body: { email } })).status,
+    ).toBe(200);
+    const secondToken = tokenFrom(mail, 'Reset');
+    const again = await api(app, jar, '/api/auth/change-password', {
+      method: 'POST',
+      body: { currentPassword: nextPassword, newPassword: 'horse-battery-staple-23' },
+    });
+    expect(again.status).toBe(200);
+    const afterChange = await api(
+      app,
+      new CookieJar(),
+      `/api/auth/reset-password?token=${secondToken}`,
+    );
+    expect(afterChange.status).toBe(400);
+    expect(await afterChange.json()).toEqual({ error: MSG.invalidToken });
+  });
+
+  it('rate limits reset-token checks with one 429 body', async () => {
+    const jar = new CookieJar();
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      const response = await api(app, jar, `/api/auth/reset-password?token=guess-${attempt}`);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: MSG.invalidToken });
+    }
+    const limited = await api(app, jar, '/api/auth/reset-password?token=guess-30');
+    const limitedAgain = await api(app, jar, '/api/auth/reset-password?token=guess-31');
+    expect(limited.status).toBe(429);
+    expect(limitedAgain.status).toBe(429);
+    expect(await limited.json()).toEqual({ error: MSG.rateLimited });
+    expect(await limitedAgain.json()).toEqual({ error: MSG.rateLimited });
+
+    await truncate(db);
+    const shared = 'same-token-value';
+    let lastStatus = 0;
+    for (let attempt = 0; attempt < 11; attempt += 1) {
+      const response = await api(app, new CookieJar(), `/api/auth/reset-password?token=${shared}`);
+      lastStatus = response.status;
+      if (attempt < 10) {
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({ error: MSG.invalidToken });
+      } else {
+        expect(response.status).toBe(429);
+        expect(await response.json()).toEqual({ error: MSG.rateLimited });
+      }
+    }
+    expect(lastStatus).toBe(429);
+    const otherToken = await api(app, new CookieJar(), '/api/auth/reset-password?token=different');
+    expect(otherToken.status).toBe(400);
+    expect(await otherToken.json()).toEqual({ error: MSG.invalidToken });
+
+    await truncate(db);
+    await db.insert(rateLimits).values({
+      key: 'reset-check-global',
+      windowStart: clock.now(),
+      count: 100,
+      lockedUntil: null,
+    });
+    const globalHit = await api(app, new CookieJar(), '/api/auth/reset-password?token=global-one');
+    const globalAgain = await api(
+      app,
+      new CookieJar(),
+      '/api/auth/reset-password?token=global-two',
+    );
+    expect(globalHit.status).toBe(429);
+    expect(globalAgain.status).toBe(429);
+    expect(await globalHit.json()).toEqual({ error: MSG.rateLimited });
+    expect(await globalAgain.json()).toEqual({ error: MSG.rateLimited });
   });
 
   it('signs out one session and every session', async () => {

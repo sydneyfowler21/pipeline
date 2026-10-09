@@ -17,3 +17,19 @@ Failure responses are deliberately generic for no-enumeration. A locked account,
 The lock starts at 5 failures: 1 minute, then doubling, capped at 1 hour. When a lock starts, the server emails that account's owner once. Later attempts during the same lock do not send another message. A new lock, after the previous one has expired, sends one email again. The message says the account was temporarily locked, the unlock time in the user's time zone, a one-time reset-password link, and the IP and device from the trusted-hop helper. Unknown emails get no mail.
 
 The sign-in screen is owned by the client, not this API. After a few failed attempts it may show one hint, identical for every email: "Having trouble? Reset your password, or check your email."
+
+## Password changes
+
+Setting a password expires outstanding credential tokens in the same transaction as the password update and the session delete. That covers reset completion and a signed-in change (`POST /api/auth/change-password` and `POST /api/me/password`). The statement marks unused `reset_password` tokens used, and also `change_email` and `email_change` if those kinds exist. Only `verify_email` and `reset_password` are issued today. A token from before the change fails `GET` and `POST /api/auth/reset-password` with `400 {"error":"Invalid or expired token"}`, the same body as a missing token.
+
+## Reset-token checks
+
+`GET /api/auth/reset-password` uses the same rate-limit helper and the trusted-hop IP as the other auth routes. Three buckets share one 429 body, `{"error":"Too many requests"}`: trusted IP (30 per 15 minutes), the first 16 hex chars of the token's SHA-256 (10 per 15 minutes), and a global cap (100 per hour). The limit is applied before the token lookup, so a live token and a bogus token get that same body. Under the limit, a missing, used, expired, or revoked token is `400 {"error":"Invalid or expired token"}`.
+
+## Response headers
+
+Every response sends a Permissions-Policy that denies unused browser features, `Cross-Origin-Opener-Policy: same-origin`, and `Cross-Origin-Resource-Policy: same-origin`, along with the existing CSP, HSTS, nosniff, referrer, and frame denial. `Cache-Control: no-store` is set on every `/api/auth` response and every `/api/me` response.
+
+## Validation status
+
+400 is schema or shape validation, including unknown fields rejected by zod `.strict()`. 422 is a domain rule after the shape has passed: a future date, an earlier stage event, a breached password, or `applied_on` cannot be changed.

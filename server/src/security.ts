@@ -13,6 +13,27 @@ const CSP = [
   "object-src 'none'",
 ].join('; ');
 
+const PERMISSIONS_POLICY = [
+  'accelerometer=()',
+  'autoplay=()',
+  'camera=()',
+  'display-capture=()',
+  'encrypted-media=()',
+  'fullscreen=()',
+  'geolocation=()',
+  'gyroscope=()',
+  'magnetometer=()',
+  'microphone=()',
+  'midi=()',
+  'payment=()',
+  'picture-in-picture=()',
+  'publickey-credentials-get=()',
+  'screen-wake-lock=()',
+  'usb=()',
+  'web-share=()',
+  'xr-spatial-tracking=()',
+].join(', ');
+
 export function securityHeaders(): MiddlewareHandler {
   return async (c, next) => {
     c.header('Content-Security-Policy', CSP);
@@ -20,6 +41,9 @@ export function securityHeaders(): MiddlewareHandler {
     c.header('X-Content-Type-Options', 'nosniff');
     c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
     c.header('X-Frame-Options', 'DENY');
+    c.header('Permissions-Policy', PERMISSIONS_POLICY);
+    c.header('Cross-Origin-Opener-Policy', 'same-origin');
+    c.header('Cross-Origin-Resource-Policy', 'same-origin');
     await next();
   };
 }
