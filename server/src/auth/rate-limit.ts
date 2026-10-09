@@ -13,7 +13,6 @@ export const RATE = {
   resetCheckPrefix: { max: 10, windowMs: 15 * 60 * 1000 },
   resetCheckGlobal: { max: 100, windowMs: 60 * 60 * 1000 },
   demoIp: { max: 10, windowMs: 60 * 60 * 1000 },
-  passwordAccount: { max: 5, windowMs: 60 * 60 * 1000 },
   resendAccount: { max: 1, windowMs: 60 * 1000 },
 } as const;
 

@@ -221,6 +221,54 @@ test('a 401 from an authenticated request signs out', async ({ page }) => {
   await expect(page.getByText("Couldn't load your applications")).toHaveCount(0);
 });
 
+test('reset page shows a rate limit without the invalid-link state', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/reset-password');
+  await expect(page.getByRole('alert')).toContainText('This link is invalid or expired.');
+  await expect(page.getByRole('link', { name: 'Request a new link' })).toBeVisible();
+
+  const email = `e2e.reset.${Date.now()}@example.test`;
+  const created = await postJson(page, '/api/auth/signup', {
+    email,
+    password,
+    timeZone: 'America/Denver',
+  });
+  expect(created.status()).toBe(200);
+  const verifyToken = await tokenFor(page, email, 'Verify your email');
+  const verified = await postJson(page, '/api/auth/verify-email', { token: verifyToken });
+  expect(verified.status()).toBe(200);
+  const signedIn = await postJson(page, '/api/auth/login', { email, password });
+  expect(signedIn.status()).toBe(200);
+  const requested = await postJson(page, '/api/auth/request-reset', { email });
+  expect(requested.status()).toBe(200);
+  const resetToken = await tokenFor(page, email, 'Reset your password');
+  const changed = await postJson(page, '/api/me/password', {
+    currentPassword: password,
+    newPassword: 'correct-horse-battery-e2e-92',
+  });
+  expect(changed.status()).toBe(200);
+  await page.goto(`/reset-password?token=${resetToken}`);
+  await expect(page.getByRole('alert')).toContainText('This link is invalid or expired.');
+  await expect(page.getByText('Too many attempts. Try again in a few minutes.')).toHaveCount(0);
+
+  await page.route('**/api/auth/reset-password?*', async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      status: 429,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: 'Too many requests' }),
+    });
+  });
+  await page.goto('/reset-password?token=this-token-is-long-enough-but-limited');
+  await expect(page.getByText('Too many attempts. Try again in a few minutes.')).toBeVisible();
+  await expect(page.getByText('invalid or expired')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Request a new link' })).toHaveCount(0);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+});
+
 test('creating an account leaves the demo', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/');
@@ -233,6 +281,31 @@ test('creating an account leaves the demo', async ({ page }) => {
 });
 
 const password = 'correct-horse-battery-e2e-91';
+
+async function postJson(page: Page, path: string, body: unknown) {
+  const csrf = await page.request.get('/api/auth/csrf');
+  expect(csrf.ok()).toBeTruthy();
+  const { csrfToken } = (await csrf.json()) as { csrfToken: string };
+  return page.request.post(path, {
+    data: body,
+    headers: { 'x-csrf-token': csrfToken },
+  });
+}
+
+async function tokenFor(page: Page, email: string, subject: string): Promise<string> {
+  const mailbox = await page.request.get('/api/test/mailbox');
+  expect(mailbox.ok()).toBeTruthy();
+  const messages = (await mailbox.json()) as {
+    messages: Array<{ to: string; subject: string; text: string }>;
+  };
+  const matches = messages.messages
+    .filter((message) => message.to === email && message.subject === subject)
+    .map((message) => message.text.match(/token=([A-Za-z0-9_-]+)/)?.[1])
+    .filter((value): value is string => Boolean(value));
+  const token = matches.at(-1);
+  if (!token) throw new Error(`no ${subject} token mailed to ${email}`);
+  return token;
+}
 
 async function signUpAndOpenList(page: Page): Promise<string> {
   const email = `e2e.signout.${Date.now()}@example.test`;

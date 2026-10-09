@@ -431,7 +431,7 @@ export function ResetPage() {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [link, setLink] = useState<'checking' | 'valid' | 'invalid'>('checking');
+  const [link, setLink] = useState<'checking' | 'valid' | 'invalid' | 'limited'>('checking');
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
@@ -444,8 +444,10 @@ export function ResetPage() {
       .then(() => {
         if (!cancel) setLink('valid');
       })
-      .catch(() => {
-        if (!cancel) setLink('invalid');
+      .catch((err: unknown) => {
+        if (cancel) return;
+        if (err instanceof ApiError && err.status === 429) setLink('limited');
+        else setLink('invalid');
       });
     return () => {
       cancel = true;
@@ -488,6 +490,7 @@ export function ResetPage() {
         Choose a new password
       </h1>
       {link === 'checking' ? <p className="mt-4 text-muted">Checking this link…</p> : null}
+      {link === 'limited' ? <p className="mt-4">{rateLimitMessage()}</p> : null}
       {link === 'invalid' ? (
         <div className="mt-4">
           <Alert tone="error">This link is invalid or expired.</Alert>
