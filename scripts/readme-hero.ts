@@ -107,11 +107,15 @@ async function cropText(page: Page): Promise<TextSample[]> {
     const grid = history?.parentElement;
     const main = document.querySelector('main');
     if (!header || !grid || !main) return [];
+    const column = document.querySelector('header .max-w-page');
     const top = header.getBoundingClientRect().top;
     const bottom = grid.getBoundingClientRect().bottom;
-    const left = Math.min(header.getBoundingClientRect().left, main.getBoundingClientRect().left);
+    const left = Math.min(
+      column?.getBoundingClientRect().left ?? header.getBoundingClientRect().left,
+      main.getBoundingClientRect().left,
+    );
     const right = Math.max(
-      header.getBoundingClientRect().right,
+      column?.getBoundingClientRect().right ?? header.getBoundingClientRect().right,
       main.getBoundingClientRect().right,
     );
     const samples: TextSample[] = [];
@@ -187,12 +191,14 @@ async function main() {
     }
 
     const header = desktopPage.locator('header');
+    const column = desktopPage.locator('header .max-w-page');
     const main = desktopPage.locator('main');
     const grid = desktopPage.locator('[aria-labelledby="history-heading"]').locator('..');
     await grid.waitFor();
 
     let viewport = { width: 1280, height: 720 };
     let headerBox = await boxOf(header, 'header');
+    let columnBox = await boxOf(column, 'column');
     let mainBox = await boxOf(main, 'main');
     let gridBox = await boxOf(grid, 'cards');
     const needed = Math.ceil(gridBox.y + gridBox.height + 8);
@@ -201,11 +207,12 @@ async function main() {
       await desktopPage.setViewportSize(viewport);
       await settle(desktopPage);
       headerBox = await boxOf(header, 'header');
+      columnBox = await boxOf(column, 'column');
       mainBox = await boxOf(main, 'main');
       gridBox = await boxOf(grid, 'cards');
     }
-    const left = Math.min(headerBox.x, mainBox.x);
-    const right = Math.max(headerBox.x + headerBox.width, mainBox.x + mainBox.width);
+    const left = Math.min(columnBox.x, mainBox.x);
+    const right = Math.max(columnBox.x + columnBox.width, mainBox.x + mainBox.width);
     const crop = {
       x: Math.max(0, Math.floor(left)),
       y: Math.max(0, Math.floor(headerBox.y)),
@@ -258,12 +265,11 @@ async function main() {
     const browserY = Math.round((canvas.height - browserH) / 2);
     const phoneX = browserX + browserW + gap;
     const phoneY = Math.round((canvas.height - phoneOuter.height) / 2);
-    const smallest = assertLegible(samples, scale, 'desktop crop');
-
     console.log(
-      `hero crop ${crop.width}x${crop.height} scale ${scale.toFixed(3)} ` +
-        `frame ${browserW}x${browserH} smallest ${smallest.toFixed(2)}px`,
+      `hero crop ${crop.width}x${crop.height} scale ${scale.toFixed(3)} frame ${browserW}x${browserH}`,
     );
+    const smallest = assertLegible(samples, scale, 'desktop crop');
+    console.log(`hero smallest ${smallest.toFixed(2)}px at 880px display`);
 
     const html = frame
       .replaceAll('/*BROWSER_X*/ 80px', `${browserX}px`)

@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, FlaskConical } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { apiJson } from '@/lib/api';
@@ -15,6 +15,7 @@ export function Shell() {
   const location = useLocation();
   const settingsOn = location.pathname.startsWith('/settings');
   const queryClient = useQueryClient();
+  const leaveToSignup = useRef(false);
   const [resendIn, setResendIn] = useState(0);
   const [resending, setResending] = useState(false);
 
@@ -25,12 +26,13 @@ export function Shell() {
   }, [resendIn]);
 
   if (loading) return <PageSkeleton />;
-  if (!user) return <Navigate to="/" replace />;
+  if (!user) return <Navigate to={leaveToSignup.current ? '/signup' : '/'} replace />;
 
   async function leaveDemo() {
     await signOut();
+    leaveToSignup.current = true;
     queryClient.setQueryData(['me'], null);
-    navigate('/signup');
+    navigate('/signup', { replace: true });
   }
 
   async function resend() {
