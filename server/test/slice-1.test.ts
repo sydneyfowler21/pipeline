@@ -83,6 +83,7 @@ describe('slice-1 fixture', () => {
   let db: Database;
   let app: TestApp;
   let close: () => Promise<void>;
+  let clock: { now(): Date; set(next: Date): void };
   let ids: Ids;
   let hashes: Record<string, string>;
   const jars = new Map<string, CookieJar>();
@@ -91,6 +92,7 @@ describe('slice-1 fixture', () => {
     const ctx = await boot();
     db = ctx.db;
     app = ctx.app;
+    clock = ctx.clock;
     close = () => ctx.sql.end({ timeout: 5 });
     ctx.clock.set(new Date(fixture.now));
     hashes = {};
@@ -300,7 +302,7 @@ describe('slice-1 fixture', () => {
     }
   });
 
-  it('writes the Applied event at noon in the user time zone and rejects a future applied_on', async () => {
+  it('writes a past Applied event at local midnight and rejects a future applied_on', async () => {
     const jar = jars.get('A');
     if (!jar) throw new Error('missing jar');
     const created = await api(app, jar, '/api/applications', {
@@ -318,7 +320,7 @@ describe('slice-1 fixture', () => {
     };
     expect(createdBody.application.visits[0]).toMatchObject({
       stage: 'Applied',
-      occurredAt: '2026-08-03T18:00:00.000Z',
+      occurredAt: '2026-08-03T06:00:00.000Z',
     });
 
     const future = await api(app, jar, '/api/applications', {
@@ -354,6 +356,48 @@ describe('slice-1 fixture', () => {
       body: { applied_on: '2026-08-01' },
     });
     expect(lockedDate.status).toBe(422);
+  });
+
+  it('lets a stage move with the default date succeed right after creating an application today', async () => {
+    const jar = jars.get('A');
+    if (!jar) throw new Error('missing jar');
+    // 08:00 America/Denver on the fixture's today. Noon would still be in the future.
+    const morning = new Date('2026-10-09T14:00:00.000Z');
+    clock.set(morning);
+    try {
+      const created = await api(app, jar, '/api/applications', {
+        method: 'POST',
+        body: {
+          company: 'Initech',
+          role: 'Platform Engineer',
+          applied_on: '2026-10-09',
+        },
+      });
+      expect(created.status).toBe(201);
+      const createdBody = (await created.json()) as {
+        application: { id: string; visits: Array<{ stage: string; occurredAt: string }> };
+      };
+      expect(createdBody.application.visits[0]).toMatchObject({
+        stage: 'Applied',
+        occurredAt: morning.toISOString(),
+      });
+
+      const moved = await api(app, jar, `/api/applications/${createdBody.application.id}/stages`, {
+        method: 'POST',
+        body: { stage: 'Screen' },
+      });
+      expect(moved.status).toBe(201);
+      const movedBody = (await moved.json()) as {
+        application: { currentStage: string; visits: Array<{ stage: string; occurredAt: string }> };
+      };
+      expect(movedBody.application.currentStage).toBe('Screen');
+      expect(movedBody.application.visits.at(-1)).toMatchObject({
+        stage: 'Screen',
+        occurredAt: morning.toISOString(),
+      });
+    } finally {
+      clock.set(new Date(fixture.now));
+    }
   });
 
   it('has no status column and installs the append-only trigger', async () => {

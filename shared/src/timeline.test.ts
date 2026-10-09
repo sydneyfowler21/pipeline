@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { computeTimeline, noonUtc } from './index.js';
+import { appliedOccurredAt, computeTimeline, localMidnightUtc } from './index.js';
 import type { Stage } from './stages.js';
 
 type FixtureEvent = {
@@ -74,12 +74,26 @@ describe('computeTimeline', () => {
   });
 });
 
-describe('noonUtc', () => {
-  it('is 18:00Z for a summer date in America/Denver', () => {
-    expect(noonUtc('2026-08-03', 'America/Denver').toISOString()).toBe('2026-08-03T18:00:00.000Z');
+describe('localMidnightUtc', () => {
+  it('is 06:00Z for a summer date in America/Denver', () => {
+    expect(localMidnightUtc('2026-08-03', 'America/Denver').toISOString()).toBe(
+      '2026-08-03T06:00:00.000Z',
+    );
   });
 
-  it('is 19:00Z after Denver leaves daylight saving time', () => {
-    expect(noonUtc('2026-12-01', 'America/Denver').toISOString()).toBe('2026-12-01T19:00:00.000Z');
+  it('is 07:00Z after Denver leaves daylight saving time', () => {
+    expect(localMidnightUtc('2026-12-01', 'America/Denver').toISOString()).toBe(
+      '2026-12-01T07:00:00.000Z',
+    );
+  });
+});
+
+describe('appliedOccurredAt', () => {
+  it('uses local midnight for a past applied_on and createdAt when applied_on is today', () => {
+    const morning = new Date('2026-10-09T14:00:00.000Z');
+    expect(appliedOccurredAt('2026-08-03', 'America/Denver', morning).toISOString()).toBe(
+      '2026-08-03T06:00:00.000Z',
+    );
+    expect(appliedOccurredAt('2026-10-09', 'America/Denver', morning)).toBe(morning);
   });
 });

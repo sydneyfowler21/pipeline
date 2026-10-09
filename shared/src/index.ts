@@ -2,7 +2,13 @@ export { STAGES, isStage } from './stages.js';
 export type { Stage } from './stages.js';
 export { computeTimeline, lastActivityAt } from './timeline.js';
 export type { Timeline, TimelineEvent, Visit } from './timeline.js';
-export { daysBetween, isValidTimeZone, localDate, noonUtc } from './time.js';
+export {
+  appliedOccurredAt,
+  daysBetween,
+  isValidTimeZone,
+  localDate,
+  localMidnightUtc,
+} from './time.js';
 export {
   changePasswordSchema,
   createApplicationSchema,

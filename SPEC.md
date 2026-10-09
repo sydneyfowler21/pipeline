@@ -42,8 +42,10 @@ There is **no status column**. Current stage = stage of the latest `stage_events
 2. Any stage may move to any other stage, including earlier ones (a revisit). Closed can reopen.
    Moving to the current stage is rejected (409, "Already in this stage").
 3. Stage changes always append. Events are never edited or deleted; a correction is a new event.
-4. Creating an application writes an `Applied` event with occurred_at = applied_on at 12:00 in the
-   user's time zone, in the same transaction.
+4. Creating an application writes an `Applied` event in the same transaction. occurred_at is
+   00:00 in the user's time zone on applied_on, except when applied_on is today in that time zone,
+   in which case occurred_at is the application's created_at. A stage move immediately afterward,
+   using the default of now, is therefore not earlier than the Applied event.
 5. A stage change takes optional `occurred_at`: default now; rejected if in the future;
    rejected if earlier than the latest existing event (equal is allowed).
 6. DB enforcement: a trigger rejects UPDATE on `stage_events`, and rejects DELETE unless the parent

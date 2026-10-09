@@ -71,19 +71,19 @@ export function daysBetween(startDate: string, endDate: string): number {
 }
 
 /**
- * UTC instant for 12:00 on a calendar date in `timeZone`.
- * Used when an application is created: the Applied event is noon local on applied_on.
+ * UTC instant for 00:00:00 on a calendar date in `timeZone`.
+ * Past Applied events use this so a later move at "now" is not before them.
  */
-export function noonUtc(isoDate: string, timeZone: string): Date {
+export function localMidnightUtc(isoDate: string, timeZone: string): Date {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate);
-  if (!match) throw new Error('noonUtc expects YYYY-MM-DD');
+  if (!match) throw new Error('localMidnightUtc expects YYYY-MM-DD');
   const year = Number(match[1]);
   const month = Number(match[2]);
   const day = Number(match[3]);
-  let utc = Date.UTC(year, month - 1, day, 12, 0, 0);
+  let utc = Date.UTC(year, month - 1, day, 0, 0, 0);
   for (let attempt = 0; attempt < 4; attempt += 1) {
     const local = zonedParts(new Date(utc), timeZone);
-    const desired = Date.UTC(year, month - 1, day, 12, 0, 0);
+    const desired = Date.UTC(year, month - 1, day, 0, 0, 0);
     const actual = Date.UTC(
       local.year,
       local.month - 1,
@@ -97,4 +97,13 @@ export function noonUtc(isoDate: string, timeZone: string): Date {
     if (diff === 0) break;
   }
   return new Date(utc);
+}
+
+/**
+ * Applied occurred_at: local midnight on applied_on, or createdAt when applied_on is
+ * today in the user's time zone. The second case keeps a default "now" stage move legal.
+ */
+export function appliedOccurredAt(appliedOn: string, timeZone: string, createdAt: Date): Date {
+  if (appliedOn === localDate(createdAt, timeZone)) return createdAt;
+  return localMidnightUtc(appliedOn, timeZone);
 }

@@ -1,5 +1,5 @@
 import { and, eq, isNotNull, lt } from 'drizzle-orm';
-import { localDate, noonUtc, type Stage } from '@pipeline/shared';
+import { localDate, localMidnightUtc, type Stage } from '@pipeline/shared';
 import { Hono } from 'hono';
 import { v7 as uuidv7 } from 'uuid';
 import { listForUser } from './applications/service.js';
@@ -80,7 +80,7 @@ async function seedDemo(db: Database, userId: string, timeZone: string, now: Dat
   for (const spec of DEMO_APPS) {
     const appliedInstant = new Date(now.getTime() - spec.startDaysAgo * 86_400_000);
     const appliedOn = localDate(appliedInstant, timeZone);
-    const appliedAt = noonUtc(appliedOn, timeZone);
+    const appliedAt = localMidnightUtc(appliedOn, timeZone);
     const applicationId = uuidv7();
     await db.insert(applications).values({
       id: applicationId,

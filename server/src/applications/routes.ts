@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { and, desc, eq } from 'drizzle-orm';
-import { localDate, noonUtc } from '@pipeline/shared';
+import { appliedOccurredAt, localDate } from '@pipeline/shared';
 import {
   createApplicationSchema,
   moveStageSchema,
@@ -47,7 +47,7 @@ export function applicationRoutes(deps: AppDeps) {
     if (parsed.data.applied_on > today) return c.json({ error: MSG.futureApplied }, 422);
 
     const id = uuidv7();
-    const occurredAt = noonUtc(parsed.data.applied_on, user.timeZone);
+    const occurredAt = appliedOccurredAt(parsed.data.applied_on, user.timeZone, now);
     await deps.db.transaction(async (tx) => {
       await tx.insert(applications).values({
         id,
