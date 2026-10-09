@@ -1,3 +1,20 @@
+import type { ApiBody } from './types';
+
+export class ApiError extends Error {
+  status: number;
+  field?: string;
+  retryAfterSeconds?: number;
+  body: ApiBody;
+
+  constructor(status: number, body: ApiBody) {
+    super(body.error ?? body.message ?? 'Request failed');
+    this.status = status;
+    this.field = body.field;
+    this.retryAfterSeconds = body.retryAfterSeconds;
+    this.body = body;
+  }
+}
+
 let csrfToken: string | null = null;
 
 async function ensureCsrf(): Promise<string> {
@@ -17,4 +34,12 @@ export async function api(path: string, init: RequestInit = {}): Promise<Respons
     if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
   }
   return fetch(path, { ...init, headers, credentials: 'same-origin' });
+}
+
+export async function apiJson<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await api(path, init);
+  const text = await response.text();
+  const body = (text ? JSON.parse(text) : {}) as T & ApiBody;
+  if (!response.ok) throw new ApiError(response.status, body);
+  return body;
 }

@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>pipeline hero frame</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 1600px;
+        height: 900px;
+        overflow: hidden;
+        background: #f2f1ec;
+      }
+      .canvas {
+        position: relative;
+        width: 1600px;
+        height: 900px;
+        background:
+          radial-gradient(560px 380px at 96% 0%, #e4dffb 0%, rgba(228, 223, 251, 0) 70%),
+          radial-gradient(520px 360px at 0% 100%, #e3efe8 0%, rgba(227, 239, 232, 0) 72%), #f2f1ec;
+      }
+      .browser {
+        position: absolute;
+        left: 80px;
+        top: 64px;
+        width: 1180px;
+        height: 760px;
+        overflow: hidden;
+        border-radius: 16px;
+        background: #fff;
+        box-shadow: 0 24px 48px -12px rgba(23, 23, 28, 0.28);
+      }
+      .chrome {
+        display: flex;
+        height: 40px;
+        align-items: center;
+        gap: 8px;
+        padding: 0 16px;
+        background: #f7f7f5;
+        border-bottom: 1px solid #dad9d3;
+      }
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: #c8c7c0;
+      }
+      .url {
+        margin-left: 10px;
+        display: flex;
+        height: 26px;
+        align-items: center;
+        border-radius: 999px;
+        border: 1px solid #dad9d3;
+        background: #fff;
+        padding: 0 12px;
+        color: #5a5952;
+        font-family: 'Geist Sans', ui-sans-serif, system-ui, sans-serif;
+        font-size: 12px;
+        line-height: 16px;
+      }
+      .desktop {
+        display: block;
+        width: 1180px;
+        height: 720px;
+        object-fit: cover;
+        object-position: top left;
+      }
+      .phone {
+        position: absolute;
+        left: 1190px;
+        top: 150px;
+        box-sizing: border-box;
+        width: 340px;
+        height: 690px;
+        padding: 12px;
+        border-radius: 44px;
+        background: #17171c;
+        box-shadow: 0 24px 48px -12px rgba(23, 23, 28, 0.28);
+      }
+      .phone img {
+        display: block;
+        width: 316px;
+        height: 666px;
+        border-radius: 34px;
+        object-fit: cover;
+        object-position: top left;
+        background: #f7f7f5;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="canvas">
+      <div class="browser">
+        <div class="chrome">
+          <span class="dot"></span>
+          <span class="dot"></span>
+          <span class="dot"></span>
+          <div class="url" id="url"></div>
+        </div>
+        <img class="desktop" id="desktop" alt="" />
+      </div>
+      <div class="phone">
+        <img id="phone" alt="" />
+      </div>
+    </div>
+  </body>
+</html>

@@ -130,4 +130,5 @@ export const AUTH_EVENT = {
   passwordReset: 'password_reset',
   emailVerified: 'email_verified',
   passwordChange: 'password_change',
+  sessionRevoked: 'session_revoked',
 } as const;

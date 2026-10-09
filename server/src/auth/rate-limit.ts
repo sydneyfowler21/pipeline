@@ -13,6 +13,8 @@ export const RATE = {
   resetCheckPrefix: { max: 10, windowMs: 15 * 60 * 1000 },
   resetCheckGlobal: { max: 100, windowMs: 60 * 60 * 1000 },
   demoIp: { max: 10, windowMs: 60 * 60 * 1000 },
+  passwordAccount: { max: 5, windowMs: 60 * 60 * 1000 },
+  resendAccount: { max: 1, windowMs: 60 * 1000 },
 } as const;
 
 const LOCKOUT_THRESHOLD = 5;
@@ -108,6 +110,17 @@ export async function recordLoginFailure(
     }
     return { count, lockedUntil };
   });
+}
+
+export async function retryAfterSeconds(
+  db: Database,
+  key: string,
+  windowMs: number,
+  now: Date,
+): Promise<number> {
+  const rows = await db.select().from(rateLimits).where(eq(rateLimits.key, key));
+  const start = rows[0]?.windowStart.getTime() ?? now.getTime();
+  return Math.max(1, Math.ceil((windowMs - (now.getTime() - start)) / 1000));
 }
 
 export async function clearLoginFailures(db: Database, userId: string): Promise<void> {

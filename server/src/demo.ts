@@ -1,5 +1,11 @@
 import { and, eq, isNotNull, lt } from 'drizzle-orm';
-import { localDate, localMidnightUtc, type Stage } from '@pipeline/shared';
+import {
+  demoRequestSchema,
+  isValidTimeZone,
+  localDate,
+  localMidnightUtc,
+  type Stage,
+} from '@pipeline/shared';
 import { Hono } from 'hono';
 import { v7 as uuidv7 } from 'uuid';
 import { listForUser } from './applications/service.js';
@@ -19,7 +25,7 @@ import {
 } from './db/schema.js';
 import type { Database } from './db/client.js';
 import type { AppDeps, AppEnv } from './deps.js';
-import { clientIp, sessionCookie, userAgent } from './http.js';
+import { clientIp, invalidInput, readJson, sessionCookie, userAgent } from './http.js';
 import { MSG } from './messages.js';
 
 const DEMO_APPS: Array<{
@@ -106,6 +112,131 @@ async function seedDemo(db: Database, userId: string, timeZone: string, now: Dat
   }
 }
 
+type HeroEvent = { stage: Stage; occurredAt: string; note: string | null };
+type HeroApp = {
+  company: string;
+  role: string;
+  url: string;
+  notes: string;
+  appliedOn: string;
+  updatedAt: string;
+  events: HeroEvent[];
+};
+
+/** Fixture user A, plus Initech at Screen on Oct 2 and Hooli closed on Sep 10. */
+const HERO_APPS: HeroApp[] = [
+  {
+    company: 'Acme Robotics',
+    role: 'Frontend Engineer',
+    url: 'https://example.test/acme/frontend',
+    notes: 'Panel went well; waiting on offer details.',
+    appliedOn: '2026-08-03',
+    updatedAt: '2026-08-03T18:00:00Z',
+    events: [
+      { stage: 'Applied', occurredAt: '2026-08-03T18:00:00Z', note: null },
+      { stage: 'Screen', occurredAt: '2026-08-10T16:00:00Z', note: 'Recruiter call' },
+      { stage: 'Interview', occurredAt: '2026-08-19T15:30:00Z', note: 'Tech screen' },
+      {
+        stage: 'Screen',
+        occurredAt: '2026-08-24T17:00:00Z',
+        note: 'Re-screened for a different team',
+      },
+      {
+        stage: 'Interview',
+        occurredAt: '2026-09-01T04:30:00Z',
+        note: 'Late-evening invite (Aug 31 local)',
+      },
+      { stage: 'Offer', occurredAt: '2026-09-14T20:00:00Z', note: 'Verbal offer' },
+    ],
+  },
+  {
+    company: 'Northwind Labs',
+    role: 'Full-Stack Engineer',
+    url: 'https://example.test/northwind/fullstack',
+    notes: 'Reopened after the req came back.',
+    appliedOn: '2026-09-01',
+    updatedAt: '2026-09-01T18:00:00Z',
+    events: [
+      { stage: 'Applied', occurredAt: '2026-09-01T18:00:00Z', note: null },
+      { stage: 'Screen', occurredAt: '2026-09-08T16:00:00Z', note: null },
+      { stage: 'Closed', occurredAt: '2026-09-15T21:00:00Z', note: 'Req frozen' },
+      { stage: 'Screen', occurredAt: '2026-09-29T15:00:00Z', note: 'Req reopened' },
+      { stage: 'Interview', occurredAt: '2026-10-06T16:00:00Z', note: 'Onsite scheduled' },
+    ],
+  },
+  {
+    company: 'Globex',
+    role: 'Software Engineer II',
+    url: 'https://example.test/globex/swe2',
+    notes: 'Edited notes after a referral.',
+    appliedOn: '2026-09-20',
+    updatedAt: '2026-10-08T15:00:00Z',
+    events: [{ stage: 'Applied', occurredAt: '2026-09-20T18:00:00Z', note: null }],
+  },
+  {
+    company: 'Initech',
+    role: 'Platform Engineer',
+    url: 'https://example.test/initech/platform',
+    notes: 'Recruiter screen is on the calendar.',
+    appliedOn: '2026-09-25',
+    updatedAt: '2026-09-25T18:00:00Z',
+    events: [
+      { stage: 'Applied', occurredAt: '2026-09-25T18:00:00Z', note: null },
+      { stage: 'Screen', occurredAt: '2026-10-02T16:00:00Z', note: 'Recruiter call' },
+    ],
+  },
+  {
+    company: 'Hooli',
+    role: 'Backend Engineer',
+    url: 'https://example.test/hooli/backend',
+    notes: '',
+    appliedOn: '2026-08-20',
+    updatedAt: '2026-08-20T18:00:00Z',
+    events: [
+      { stage: 'Applied', occurredAt: '2026-08-20T18:00:00Z', note: null },
+      { stage: 'Closed', occurredAt: '2026-09-10T16:00:00Z', note: 'Role filled' },
+    ],
+  },
+];
+
+export function demoSeedMode(nodeEnv: string, seed: string | undefined): 'default' | 'hero' {
+  if (seed === 'hero' && nodeEnv !== 'production') return 'hero';
+  return 'default';
+}
+
+export function resolveDemoTimeZone(value: string | undefined): string {
+  if (value && isValidTimeZone(value)) return value;
+  return 'America/Denver';
+}
+
+async function seedHero(db: Database, userId: string) {
+  for (const spec of HERO_APPS) {
+    const applicationId = uuidv7();
+    const updatedAt = new Date(spec.updatedAt);
+    const createdAt = new Date(spec.events[0]?.occurredAt ?? spec.updatedAt);
+    await db.insert(applications).values({
+      id: applicationId,
+      userId,
+      company: spec.company,
+      role: spec.role,
+      url: spec.url,
+      notes: spec.notes,
+      appliedOn: spec.appliedOn,
+      createdAt,
+      updatedAt,
+    });
+    for (const event of spec.events) {
+      await db.insert(stageEvents).values({
+        id: uuidv7(),
+        applicationId,
+        stage: event.stage,
+        note: event.note,
+        occurredAt: new Date(event.occurredAt),
+      });
+    }
+  }
+}
+
 export function demoRoutes(deps: AppDeps) {
   const routes = new Hono<AppEnv>();
 
@@ -122,6 +253,18 @@ export function demoRoutes(deps: AppDeps) {
     );
     if (!allowed) return c.json({ error: MSG.rateLimited }, 429);
 
+    const raw = await readJson(c);
+    let requestedZone: string | undefined;
+    let requestedSeed: string | undefined;
+    if (raw != null) {
+      const parsed = demoRequestSchema.safeParse(raw);
+      if (!parsed.success) return c.json(invalidInput(parsed.error), 400);
+      requestedZone = parsed.data.timeZone;
+      requestedSeed = parsed.data.seed;
+    }
+    const timeZone = resolveDemoTimeZone(requestedZone);
+    const mode = demoSeedMode(deps.env.NODE_ENV, requestedSeed);
+
     const userId = uuidv7();
     const email = `demo.${userId}@example.test`;
     const expiresAt = new Date(now.getTime() + DEMO_TTL_MS);
@@ -130,12 +273,13 @@ export function demoRoutes(deps: AppDeps) {
       email,
       passwordHash: await hashPassword(newToken(32)),
       emailVerifiedAt: now,
-      timeZone: 'America/Denver',
+      timeZone,
       isDemo: true,
       demoExpiresAt: expiresAt,
       createdAt: now,
     });
-    await seedDemo(deps.db, userId, 'America/Denver', now);
+    if (mode === 'hero') await seedHero(deps.db, userId);
+    else await seedDemo(deps.db, userId, timeZone, now);
 
     const token = newToken(32);
     const sessionId = sessionIdForToken(token, deps.env.SESSION_SECRET);
@@ -163,7 +307,7 @@ export function demoRoutes(deps: AppDeps) {
       email,
       passwordHash: null,
       emailVerifiedAt: now,
-      timeZone: 'America/Denver',
+      timeZone,
       isDemo: true,
       demoExpiresAt: expiresAt,
       createdAt: now,

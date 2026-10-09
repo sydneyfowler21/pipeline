@@ -86,6 +86,24 @@ export const changePasswordSchema = z
   })
   .strict();
 
+export const preferencesSchema = z
+  .object({
+    timeZone: z
+      .string()
+      .min(1)
+      .max(100)
+      .refine(isValidTimeZone, 'timeZone must be an IANA time zone'),
+  })
+  .strict();
+
+/** Demo sign-in. Invalid time zones are ignored by the server and fall back to America/Denver. */
+export const demoRequestSchema = z
+  .object({
+    timeZone: z.string().max(100).optional(),
+    seed: z.enum(['hero']).optional(),
+  })
+  .strict();
+
 export const createApplicationSchema = z
   .object({
     company: z.string().trim().min(1).max(120),
@@ -109,7 +127,7 @@ export const moveStageSchema = z
   .object({
     stage: z.enum(STAGES),
     occurred_at: z.string().datetime({ offset: true }).optional(),
-    note: z.string().max(5000).nullable().optional(),
+    note: z.string().max(280, 'Note must be 280 characters or fewer.').nullable().optional(),
   })
   .strict();
 

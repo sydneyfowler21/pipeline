@@ -3,6 +3,7 @@ import {
   computeTimeline,
   lastActivityAt,
   localDate,
+  STAGES,
   type Stage,
   type Visit,
 } from '@pipeline/shared';
@@ -14,6 +15,7 @@ type AppRow = typeof applications.$inferSelect;
 type EventRow = typeof stageEvents.$inferSelect;
 
 export type ApplicationVisit = Visit & {
+  visitNumber: number;
   occurredAt: string;
   note: string | null;
 };
@@ -29,8 +31,16 @@ export type ApplicationDetail = {
   updatedAt: string;
   currentStage: Stage;
   lastActivity: string;
+  lastActivityAt: string;
+  lastActivityKind: 'stage_change' | 'edited';
+  lastActivityStage: Stage | null;
   visits: ApplicationVisit[];
   totals: Partial<Record<Stage, number>>;
+  visitCounts: Partial<Record<Stage, number>>;
+  latestEventAt: string;
+  latestEventLocalDate: string;
+  timeZone: string;
+  today: string;
 };
 
 export type ApplicationListItem = {
@@ -40,6 +50,16 @@ export type ApplicationListItem = {
   currentStage: Stage;
   daysInCurrentStage: number;
   lastActivity: string;
+  lastActivityAt: string;
+  lastActivityKind: 'stage_change' | 'edited';
+  lastActivityStage: Stage | null;
+};
+
+export type ApplicationListResponse = {
+  applications: ApplicationListItem[];
+  total: number;
+  countsByStage: Record<Stage, number>;
+  unfilteredTotal: number;
 };
 
 function sortedEvents(events: EventRow[]): EventRow[] {
@@ -69,6 +89,20 @@ export function presentDetail(
   );
   const latest = ordered[ordered.length - 1];
   const lastActivity = lastActivityAt(latest.occurredAt, app.updatedAt);
+  const edited =
+    app.updatedAt.getTime() > app.createdAt.getTime() &&
+    app.updatedAt.getTime() > latest.occurredAt.getTime();
+  const visitCounts: Partial<Record<Stage, number>> = {};
+  const visits: ApplicationVisit[] = timeline.visits.map((visit, index) => {
+    const visitNumber = (visitCounts[visit.stage] ?? 0) + 1;
+    visitCounts[visit.stage] = visitNumber;
+    return {
+      ...visit,
+      visitNumber,
+      occurredAt: ordered[index].occurredAt.toISOString(),
+      note: ordered[index].note,
+    };
+  });
   return {
     id: app.id,
     company: app.company,
@@ -80,12 +114,16 @@ export function presentDetail(
     updatedAt: app.updatedAt.toISOString(),
     currentStage: timeline.currentStage,
     lastActivity: lastActivity.toISOString(),
-    visits: timeline.visits.map((visit, index) => ({
-      ...visit,
-      occurredAt: ordered[index].occurredAt.toISOString(),
-      note: ordered[index].note,
-    })),
+    lastActivityAt: lastActivity.toISOString(),
+    lastActivityKind: edited ? 'edited' : 'stage_change',
+    lastActivityStage: edited ? null : latest.stage,
+    visits,
     totals: timeline.totals,
+    visitCounts,
+    latestEventAt: latest.occurredAt.toISOString(),
+    latestEventLocalDate: localDate(latest.occurredAt, timeZone),
+    timeZone,
+    today,
   };
 }
 
@@ -125,6 +163,9 @@ export async function listForUser(
       currentStage: detail.currentStage,
       daysInCurrentStage: currentVisit.days,
       lastActivity: detail.lastActivity,
+      lastActivityAt: detail.lastActivityAt,
+      lastActivityKind: detail.lastActivityKind,
+      lastActivityStage: detail.lastActivityStage,
     });
   }
 
@@ -146,6 +187,32 @@ export async function ownedApplication(db: Database, userId: string, id: string)
 
 export async function applicationEvents(db: Database, applicationId: string) {
   return db.select().from(stageEvents).where(eq(stageEvents.applicationId, applicationId));
+}
+
+const EMPTY_COUNTS = Object.fromEntries(STAGES.map((stage) => [stage, 0])) as Record<Stage, number>;
+
+/** `q` matches company or role only. `countsByStage` ignores the stage filter so chips stay honest. */
+export function queryList(
+  items: ApplicationListItem[],
+  q: string,
+  stage: Stage | null,
+): ApplicationListResponse {
+  const needle = q.trim().toLowerCase().slice(0, 100);
+  const searched = needle
+    ? items.filter(
+        (item) =>
+          item.company.toLowerCase().includes(needle) || item.role.toLowerCase().includes(needle),
+      )
+    : items;
+  const countsByStage = { ...EMPTY_COUNTS };
+  for (const item of searched) countsByStage[item.currentStage] += 1;
+  const applications = stage ? searched.filter((item) => item.currentStage === stage) : searched;
+  return {
+    applications,
+    total: searched.length,
+    countsByStage,
+    unfilteredTotal: items.length,
+  };
 }
 
 export async function detailForUser(

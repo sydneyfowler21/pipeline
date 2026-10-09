@@ -1,6 +1,7 @@
 import {
   changePasswordSchema,
   loginSchema,
+  preferencesSchema,
   requestResetSchema,
   resetPasswordSchema,
   signupSchema,
@@ -42,7 +43,9 @@ import {
   consumeRateLimit,
   loginLock,
   recordLoginFailure,
+  retryAfterSeconds,
 } from './rate-limit.js';
+import { authEventLabel, deviceLabel } from './device.js';
 import { findUserByEmail, findUserById, presentUser } from './users.js';
 
 async function audit(
@@ -278,21 +281,7 @@ export function authRoutes(deps: AppDeps) {
     return c.json({ ok: true });
   });
 
-  routes.post('/logout-all', async (c) => {
-    const user = c.get('user');
-    if (!user) return c.json({ error: MSG.unauthorized }, 401);
-    const now = deps.clock.now();
-    await deps.db.delete(sessions).where(eq(sessions.userId, user.id));
-    await audit(deps, {
-      userId: user.id,
-      kind: AUTH_EVENT.signOutAll,
-      ip: clientIp(c, deps.env.TRUSTED_PROXY_HOPS),
-      userAgent: userAgent(c),
-      now,
-    });
-    c.header('Set-Cookie', clearSessionCookie(), { append: true });
-    return c.json({ ok: true });
-  });
+  routes.post('/logout-all', (c) => handleRevokeAll(deps, c));
 
   routes.post('/verify-email', async (c) => {
     const parsed = verifyEmailSchema.safeParse(await readJson(c));
@@ -398,60 +387,13 @@ export function authRoutes(deps: AppDeps) {
     return c.json({ user: presentUser(user) });
   });
 
-  routes.get('/sessions', async (c) => {
-    const user = c.get('user');
-    const current = c.get('sessionId');
-    if (!user) return c.json({ error: MSG.unauthorized }, 401);
-    const rows = await deps.db
-      .select()
-      .from(sessions)
-      .where(eq(sessions.userId, user.id))
-      .orderBy(desc(sessions.createdAt));
-    return c.json({
-      sessions: rows.map((row) => ({
-        id: row.id,
-        createdAt: row.createdAt.toISOString(),
-        lastSeenAt: row.lastSeenAt.toISOString(),
-        expiresAt: row.expiresAt.toISOString(),
-        ip: row.ip,
-        userAgent: row.userAgent,
-        current: row.id === current,
-      })),
-    });
-  });
+  routes.post('/resend-verification', (c) => handleResendVerification(deps, c));
 
-  routes.delete('/sessions/:id', async (c) => {
-    const user = c.get('user');
-    if (!user) return c.json({ error: MSG.unauthorized }, 401);
-    const id = c.req.param('id');
-    const removed = await deps.db
-      .delete(sessions)
-      .where(and(eq(sessions.id, id), eq(sessions.userId, user.id)))
-      .returning({ id: sessions.id });
-    if (removed.length === 0) return c.json({ error: MSG.notFound }, 404);
-    if (id === c.get('sessionId')) c.header('Set-Cookie', clearSessionCookie(), { append: true });
-    return c.json({ ok: true });
-  });
+  routes.get('/sessions', (c) => handleListSessions(deps, c));
 
-  routes.get('/events', async (c) => {
-    const user = c.get('user');
-    if (!user) return c.json({ error: MSG.unauthorized }, 401);
-    const rows = await deps.db
-      .select()
-      .from(authEvents)
-      .where(eq(authEvents.userId, user.id))
-      .orderBy(desc(authEvents.createdAt))
-      .limit(50);
-    return c.json({
-      events: rows.map((row) => ({
-        id: row.id,
-        kind: row.kind,
-        ip: row.ip,
-        userAgent: row.userAgent,
-        createdAt: row.createdAt.toISOString(),
-      })),
-    });
-  });
+  routes.delete('/sessions/:id', (c) => handleRevokeSession(deps, c));
+
+  routes.get('/events', (c) => handleListEvents(deps, c));
 
   return routes;
 }
@@ -529,6 +471,136 @@ async function changePassword(deps: AppDeps, c: Context<AppEnv>) {
   });
   c.header('Set-Cookie', sessionCookie(token), { append: true });
   return c.json({ ok: true });
+}
+
+export function accountAliasRoutes(deps: AppDeps) {
+  const routes = new Hono<AppEnv>();
+  routes.get('/sessions', (c) => handleListSessions(deps, c));
+  routes.delete('/sessions/:id', (c) => handleRevokeSession(deps, c));
+  routes.post('/sessions/revoke-all', (c) => handleRevokeAll(deps, c));
+  routes.patch('/me/preferences', (c) => handlePreferences(deps, c));
+  return routes;
+}
+
+export async function handlePreferences(deps: AppDeps, c: Context<AppEnv>) {
+  const user = c.get('user');
+  if (!user) return c.json({ error: MSG.unauthorized }, 401);
+  const parsed = preferencesSchema.safeParse(await readJson(c));
+  if (!parsed.success) return c.json(invalidInput(parsed.error), 400);
+  await deps.db.update(users).set({ timeZone: parsed.data.timeZone }).where(eq(users.id, user.id));
+  const updated = await findUserById(deps.db, user.id);
+  if (!updated) return c.json({ error: MSG.internal }, 500);
+  return c.json({ user: presentUser(updated) });
+}
+
+export async function handleListSessions(deps: AppDeps, c: Context<AppEnv>) {
+  const user = c.get('user');
+  const current = c.get('sessionId');
+  if (!user) return c.json({ error: MSG.unauthorized }, 401);
+  const rows = await deps.db
+    .select()
+    .from(sessions)
+    .where(eq(sessions.userId, user.id))
+    .orderBy(desc(sessions.createdAt));
+  return c.json({
+    sessions: rows.map((row) => ({
+      id: row.id,
+      createdAt: row.createdAt.toISOString(),
+      lastSeenAt: row.lastSeenAt.toISOString(),
+      expiresAt: row.expiresAt.toISOString(),
+      ip: row.ip,
+      userAgent: row.userAgent,
+      device: deviceLabel(row.userAgent),
+      current: row.id === current,
+      isCurrent: row.id === current,
+    })),
+  });
+}
+
+export async function handleRevokeSession(deps: AppDeps, c: Context<AppEnv>) {
+  const user = c.get('user');
+  if (!user) return c.json({ error: MSG.unauthorized }, 401);
+  const id = c.req.param('id');
+  if (!id) return c.json({ error: MSG.notFound }, 404);
+  if (id === c.get('sessionId')) return c.json({ error: MSG.currentSession }, 409);
+  const removed = await deps.db
+    .delete(sessions)
+    .where(and(eq(sessions.id, id), eq(sessions.userId, user.id)))
+    .returning({ id: sessions.id });
+  if (removed.length === 0) return c.json({ error: MSG.notFound }, 404);
+  await audit(deps, {
+    userId: user.id,
+    kind: AUTH_EVENT.sessionRevoked,
+    ip: clientIp(c, deps.env.TRUSTED_PROXY_HOPS),
+    userAgent: userAgent(c),
+    now: deps.clock.now(),
+  });
+  return c.json({ ok: true });
+}
+
+export async function handleRevokeAll(deps: AppDeps, c: Context<AppEnv>) {
+  const user = c.get('user');
+  if (!user) return c.json({ error: MSG.unauthorized }, 401);
+  const now = deps.clock.now();
+  await deps.db.delete(sessions).where(eq(sessions.userId, user.id));
+  await audit(deps, {
+    userId: user.id,
+    kind: AUTH_EVENT.signOutAll,
+    ip: clientIp(c, deps.env.TRUSTED_PROXY_HOPS),
+    userAgent: userAgent(c),
+    now,
+  });
+  c.header('Set-Cookie', clearSessionCookie(), { append: true });
+  return c.json({ ok: true });
+}
+
+export async function handleListEvents(deps: AppDeps, c: Context<AppEnv>) {
+  const user = c.get('user');
+  if (!user) return c.json({ error: MSG.unauthorized }, 401);
+  const rows = await deps.db
+    .select()
+    .from(authEvents)
+    .where(eq(authEvents.userId, user.id))
+    .orderBy(desc(authEvents.createdAt))
+    .limit(50);
+  return c.json({
+    events: rows.map((row) => ({
+      id: row.id,
+      kind: row.kind,
+      label: authEventLabel(row.kind),
+      ip: row.ip,
+      userAgent: row.userAgent,
+      device: deviceLabel(row.userAgent),
+      createdAt: row.createdAt.toISOString(),
+    })),
+  });
+}
+
+export async function handleResendVerification(deps: AppDeps, c: Context<AppEnv>) {
+  const user = c.get('user');
+  if (!user) return c.json({ error: MSG.unauthorized }, 401);
+  if (user.emailVerifiedAt) return c.json({ ok: true, alreadyVerified: true });
+  const now = deps.clock.now();
+  const allowed = await consumeRateLimit(
+    deps.db,
+    `resend:${user.id}`,
+    RATE.resendAccount.max,
+    RATE.resendAccount.windowMs,
+    now,
+  );
+  if (!allowed) {
+    const retryAfter = await retryAfterSeconds(
+      deps.db,
+      `resend:${user.id}`,
+      RATE.resendAccount.windowMs,
+      now,
+    );
+    return c.json({ error: MSG.resendWait, retryAfterSeconds: retryAfter }, 429);
+  }
+  const token = await issueToken(deps, user.id, 'verify_email', now, VERIFY_TTL_MS);
+  const mail = verifyEmail(deps.env.APP_URL, token);
+  await sendQuietly(deps, { to: user.email, ...mail });
+  return c.json({ message: MSG.signup, retryAfterSeconds: 60 });
 }
 
 async function findLiveToken(

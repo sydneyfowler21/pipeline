@@ -15,6 +15,10 @@ export const MSG = {
   invalidInput: 'Invalid input',
   invalidToken: 'Invalid or expired token',
   currentPassword: 'Current password is incorrect',
+  currentSession: 'Sign out here from the account menu.',
+  samePassword: 'Choose a different password.',
+  noteTooLong: 'Note must be 280 characters or fewer.',
+  resendWait: 'Wait before requesting another link.',
   pwned: "Choose a password that isn't in known breach lists",
   internal: 'Internal error',
 } as const;

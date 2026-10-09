@@ -1,4 +1,5 @@
 SPEC.md
+docs/design
 docs/plans/slice-1.md
 fixtures/slice-1.json
 package-lock.json
