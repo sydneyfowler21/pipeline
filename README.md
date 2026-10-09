@@ -30,7 +30,7 @@ React 18, TypeScript, Vite, Tailwind CSS, TanStack Query, React Router, Hono, Dr
 
 ## Deploy
 
-`render.yaml` defines one Render web service. Postgres is external Neon, passed in as `DATABASE_URL`. There is no Render database. Set the env vars from `.env.example` on the service. `APP_URL` is the public https origin. Production mail requires `RESEND_API_KEY`. `TRUSTED_PROXY_HOPS` is `1` on Render so the client IP is the rightmost `X-Forwarded-For` hop; local `.env` uses `0` and ignores that header. See `docs/SECURITY.md`.
+`render.yaml` defines one Render web service. Postgres is external Neon, passed in as `DATABASE_URL`. There is no Render database. Set the env vars from `.env.example` on the service. `APP_URL` is the public https origin. Production mail requires `RESEND_API_KEY`. The client IP is `TRUSTED_PROXY_HOPS` entries from the right of `X-Forwarded-For`. `0` ignores that header and uses the socket address. Unset defaults to `0`. Render sets `1`, which is correct only because Render's proxy is the sole route to the app. A wrong hop count reopens IP spoofing. See `docs/SECURITY.md`.
 
 I made history append-only so days-in-stage stays honest when a stage is revisited.
 

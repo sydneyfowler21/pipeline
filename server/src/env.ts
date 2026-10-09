@@ -16,7 +16,7 @@ export type Env = {
   RESEND_API_KEY?: string;
   GITHUB_CLIENT_ID?: string;
   GITHUB_CLIENT_SECRET?: string;
-  /** Reverse proxies that append to X-Forwarded-For. 0 ignores the header. Default 1 (Render). */
+  /** Reverse proxies that append to X-Forwarded-For. 0 ignores the header. Unset defaults to 0. */
   TRUSTED_PROXY_HOPS: number;
 };
 
@@ -66,7 +66,7 @@ export function resolveMailTransport(
 }
 
 export function loadEnv(): Env {
-  config({ path: join(repoRoot, '.env') });
+  config({ path: join(repoRoot, '.env'), quiet: true });
 
   const nodeEnv = process.env.NODE_ENV?.trim() || 'development';
   const databaseUrl = required('DATABASE_URL');
@@ -114,13 +114,22 @@ export function loadEnv(): Env {
   };
 }
 
-/** Default 1: Render appends the client address. 0 ignores X-Forwarded-For. */
+/**
+ * Unset means 0: ignore X-Forwarded-For and use the socket.
+ * Invalid or negative values fail startup. They are not treated as "trust the header".
+ */
 function trustedHops(raw: string | undefined): number {
   const value = blankToUndefined(raw);
-  if (value === undefined) return 1;
-  if (!/^\d+$/.test(value)) throw new Error('TRUSTED_PROXY_HOPS must be a non-negative integer');
+  if (value === undefined) return 0;
+  if (!/^\d+$/.test(value)) {
+    throw new Error(
+      'TRUSTED_PROXY_HOPS must be a non-negative integer; unset defaults to 0 and ignores X-Forwarded-For',
+    );
+  }
   const hops = Number(value);
-  if (hops > 32) throw new Error('TRUSTED_PROXY_HOPS must be at most 32');
+  if (!Number.isSafeInteger(hops) || hops > 32) {
+    throw new Error('TRUSTED_PROXY_HOPS must be an integer from 0 to 32');
+  }
   return hops;
 }
 

@@ -107,11 +107,12 @@ There is **no status column**. Current stage = stage of the latest `stage_events
   2FA enabled/disabled, recovery code used. Users see their last 50 in Settings.
 
 ## Platform security
-- **Client IP**: `TRUSTED_PROXY_HOPS` (default 1, Render's one proxy). The client address is that
-  many entries from the right of `X-Forwarded-For`, because each trusted proxy appends the peer it
-  saw. If the header has fewer entries, or the chosen value is not an IP, use the socket address.
-  `0` ignores `X-Forwarded-For` and uses the socket (local development and tests). Rate limits,
-  sessions, `auth_events`, and demo seeding all use this one helper. Do not trust the leftmost hop.
+- **Client IP**: `TRUSTED_PROXY_HOPS` entries from the right of `X-Forwarded-For`, because each
+  trusted proxy appends the peer it saw. `0` ignores the header and uses the socket address. Unset
+  defaults to `0`. Set `1` on Render, correct only because Render's proxy is the sole route to the
+  app. A wrong hop count reopens IP spoofing. Invalid or negative values fail startup. If the header
+  has fewer entries, or the chosen value is not an IP, use the socket address. Rate limits, sessions,
+  `auth_events`, and demo seeding all use this one helper. Do not trust the leftmost hop.
 - Headers: strict CSP (`default-src 'self'`; no inline script), HSTS, X-Content-Type-Options,
   Referrer-Policy strict-origin-when-cross-origin, frame-ancestors 'none'.
 - Every query is scoped by `user_id` server-side. Another user's id returns **404**, never 403.

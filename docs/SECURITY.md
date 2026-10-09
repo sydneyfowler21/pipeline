@@ -4,7 +4,7 @@
 
 The server does not trust the leftmost `X-Forwarded-For` value. A client can set that hop before the request reaches a proxy, which would mint a new per-IP rate-limit bucket and forge the address stored on sessions and sign-in history.
 
-`TRUSTED_PROXY_HOPS` is how many reverse proxies append the peer they saw. The client address is that many entries from the right. The default is 1, which matches Render's one proxy. `render.yaml` sets it explicitly. If the header is shorter than that, or the chosen entry is not an IP, the socket remote address is used instead. `TRUSTED_PROXY_HOPS=0` ignores `X-Forwarded-For` entirely and uses the socket. That is the local and test setting.
+`TRUSTED_PROXY_HOPS` is how many reverse proxies append the peer they saw. The client address is that many entries from the right of `X-Forwarded-For`. `0` ignores the header and uses the socket address. Unset defaults to `0`, so a missing value does not trust the header. Set `1` on Render. That value is correct only because Render's proxy is the sole route to the app; `render.yaml` sets it explicitly. A wrong hop count reopens IP spoofing: too high and the header is ignored or the wrong hop is kept, too low and a client-supplied hop is treated as the client. An invalid or negative value fails startup instead of falling back to trusting the header. If the header is shorter than the hop count, or the chosen entry is not an IP, the socket address is used.
 
 Login, signup, password-reset, and demo rate limits, plus session rows and `auth_events`, all call this helper. There is no second reader of `X-Forwarded-For` or `X-Real-IP`.
 

@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { sha256, normalizeEmail } from '../src/crypto.js';
 import { authEvents, rateLimits, sessions } from '../src/db/schema.js';
+import { loadEnv } from '../src/env.js';
 import { deriveClientIp } from '../src/http.js';
 import { MSG } from '../src/messages.js';
 import {
@@ -305,4 +306,66 @@ describe('hops=0 and the per-account login limit', () => {
 
 function spoof(n: number, right = trusted): string {
   return `198.51.100.${n}, ${right}`;
+}
+
+describe('TRUSTED_PROXY_HOPS config', () => {
+  it('rejects invalid and negative values instead of trusting X-Forwarded-For', () => {
+    for (const value of ['-1', '-2', 'nope', '1.5', '+1']) {
+      expect(() => withTrustedProxyHops(value, () => loadEnv()), value).toThrow(
+        /TRUSTED_PROXY_HOPS/,
+      );
+    }
+  });
+
+  it('ignores a spoofed X-Forwarded-For when the variable is unset', async () => {
+    const hops = withTrustedProxyHops(undefined, () => loadEnv().TRUSTED_PROXY_HOPS);
+    expect(hops).toBe(0);
+    expect(withTrustedProxyHops('1', () => loadEnv().TRUSTED_PROXY_HOPS)).toBe(1);
+    expect(withTrustedProxyHops('2', () => loadEnv().TRUSTED_PROXY_HOPS)).toBe(2);
+
+    const ctx = await boot(async () => false, hops);
+    const socket = '203.0.113.50';
+    try {
+      await truncate(ctx.db);
+      const jar = new CookieJar();
+      await withCsrf(ctx.app, jar);
+      const first = await api(ctx.app, jar, '/api/auth/login', {
+        method: 'POST',
+        body: { email: 'missing@example.test', password },
+        forwardedFor: '198.51.100.9',
+        remoteAddress: socket,
+      });
+      const second = await api(ctx.app, jar, '/api/auth/login', {
+        method: 'POST',
+        body: { email: 'missing@example.test', password },
+        forwardedFor: '203.0.113.99',
+        remoteAddress: socket,
+      });
+      expect(first.status).toBe(401);
+      expect(second.status).toBe(401);
+
+      const events = await ctx.db.select().from(authEvents);
+      expect(events.map((row) => row.ip)).toEqual([socket, socket]);
+      const keys = await ctx.db.select().from(rateLimits);
+      const ipKeys = keys.filter((row) => row.key.startsWith('login-ip:'));
+      expect(ipKeys.map((row) => row.key)).toEqual([`login-ip:${socket}`]);
+      expect(ipKeys[0]?.count).toBe(2);
+      expect(keys.some((row) => row.key.includes('198.51.100.9'))).toBe(false);
+      expect(keys.some((row) => row.key.includes('203.0.113.99'))).toBe(false);
+    } finally {
+      await ctx.sql.end({ timeout: 5 });
+    }
+  });
+});
+
+function withTrustedProxyHops<T>(value: string | undefined, run: () => T): T {
+  const previous = process.env.TRUSTED_PROXY_HOPS;
+  if (value === undefined) delete process.env.TRUSTED_PROXY_HOPS;
+  else process.env.TRUSTED_PROXY_HOPS = value;
+  try {
+    return run();
+  } finally {
+    if (previous === undefined) delete process.env.TRUSTED_PROXY_HOPS;
+    else process.env.TRUSTED_PROXY_HOPS = previous;
+  }
 }

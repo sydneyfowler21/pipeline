@@ -26,5 +26,7 @@ services:
         sync: false
       - key: GITHUB_CLIENT_SECRET
         sync: false
+      # 1 is correct only because Render's proxy is the sole route to the app.
+      # A wrong hop count reopens IP spoofing.
       - key: TRUSTED_PROXY_HOPS
         value: '1'
