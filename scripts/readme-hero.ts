@@ -298,7 +298,7 @@ async function main() {
     await phonePage.context().addCookies(await desktop.cookies());
     await phonePage.goto(`${base}/applications?screenshot=1`);
     await phonePage.getByRole('heading', { name: 'Applications', exact: true }).waitFor();
-    const phoneOuter = { width: 430, height: 760 };
+    const phoneOuter = { width: 400, height: 740 };
     const phoneInner = phoneOuter.width - 24;
     const unzoomed = await viewportText(phonePage);
     if (unzoomed.length === 0) throw new Error('phone capture has no text to measure');

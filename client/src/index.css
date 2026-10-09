@@ -715,11 +715,11 @@ html[data-screenshot] header > div {
 }
 
 html[data-screenshot] main {
-  padding: 10px 16px 8px;
+  padding: 8px 16px 4px;
 }
 
 html[data-screenshot] .card {
-  padding: 12px 14px;
+  padding: 10px 12px;
 }
 
 html[data-screenshot] #detail-heading {
@@ -728,20 +728,20 @@ html[data-screenshot] #detail-heading {
 }
 
 html[data-screenshot] .mt-3 {
-  margin-top: 6px !important;
+  margin-top: 4px !important;
 }
 
 html[data-screenshot] .mt-4 {
-  margin-top: 8px !important;
+  margin-top: 6px !important;
 }
 
 html[data-screenshot] .mt-8 {
-  margin-top: 12px !important;
+  margin-top: 10px !important;
 }
 
 html[data-screenshot] main .mt-8.grid {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr);
+  gap: 16px;
 }
 
 html[data-screenshot] .btn {
@@ -769,7 +769,7 @@ html[data-screenshot] [aria-labelledby='history-heading'] li > div {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 8px;
+  gap: 4px 8px;
 }
 
 html[data-screenshot] [aria-labelledby='history-heading'] .user-text {
@@ -781,7 +781,7 @@ html[data-screenshot] [aria-labelledby='totals-heading'] > p {
 }
 
 html[data-screenshot] ol > li + li {
-  margin-top: 8px !important;
+  margin-top: 6px !important;
 }
 
 html[data-screenshot] [aria-labelledby='history-heading'] p,
