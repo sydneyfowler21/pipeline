@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { apiJson } from '@/lib/api';
-import { hoursLeft, initials } from '@/lib/copy';
+import { accountInitials, accountLabel, hoursLeft } from '@/lib/copy';
 import { Menu, MenuItem } from './kit';
 import { signOut, useAuth } from './auth-context';
 import { Wordmark } from './wordmark';
@@ -29,7 +29,7 @@ export function Shell() {
 
   async function leaveDemo() {
     await signOut();
-    queryClient.clear();
+    queryClient.setQueryData(['me'], null);
     navigate('/signup');
   }
 
@@ -126,16 +126,16 @@ export function Shell() {
               trigger={
                 <>
                   <span className="grid h-8 w-8 place-items-center rounded-full bg-tint text-[13px] font-semibold text-accent">
-                    {initials(user.email)}
+                    {accountInitials(user)}
                   </span>
                   <span className="hidden max-w-[180px] truncate text-[13.5px] text-muted sm:inline">
-                    {user.email}
+                    {accountLabel(user)}
                   </span>
                   <ChevronDown aria-hidden className="h-4 w-4 text-muted" />
                 </>
               }
             >
-              <div className="px-3 py-2 text-[13px] text-muted">{user.email}</div>
+              <div className="px-3 py-2 text-[13px] text-muted">{accountLabel(user)}</div>
               <MenuItem onSelect={() => navigate('/settings/security')}>Settings</MenuItem>
               <MenuItem onSelect={() => void logout()}>Sign out</MenuItem>
             </Menu>
@@ -154,7 +154,7 @@ export function Shell() {
           Settings
         </Link>
       </nav>
-      <main id="content" className="mx-auto max-w-page px-4 py-6 sm:px-8 sm:py-10">
+      <main id="content" className="mx-auto min-w-0 max-w-page px-4 py-6 sm:px-8 sm:py-10">
         <Outlet />
       </main>
     </div>
@@ -211,7 +211,7 @@ export function BackLink({ to, children }: { to: string; children: string }) {
   return (
     <Link
       to={to}
-      className="inline-flex min-h-11 items-center text-[14px] text-accent underline underline-offset-2"
+      className="back-link inline-flex min-h-11 items-center text-[14px] text-accent underline underline-offset-2"
     >
       {children}
     </Link>

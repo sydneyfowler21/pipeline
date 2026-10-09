@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ChevronRight, Plus, Search, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ApiError, apiJson } from '@/lib/api';
+import { apiJson } from '@/lib/api';
 import {
   activityText,
   daysPhrase,
@@ -12,8 +12,7 @@ import {
   toneIndex,
 } from '@/lib/copy';
 import type { ApplicationList, ApplicationListItem } from '@/lib/types';
-import { friendlyError } from '@/lib/copy';
-import { Alert, Button } from '@/components/kit';
+import { Button } from '@/components/kit';
 import { StageChip, StageDot } from '@/components/stage-chip';
 import { useAuth } from '@/components/auth-context';
 import type { Stage } from '@pipeline/shared';
@@ -124,30 +123,36 @@ export function ListPage() {
         <div aria-busy="true" className="mt-6">
           <p className="sr-only">Loading applications</p>
           {showSkeleton ? (
-            <div className="space-y-3">
-              <div className="skeleton h-11 w-full max-w-xs" />
-              <div className="skeleton h-[68px] w-full" />
-              <div className="skeleton h-[68px] w-full" />
-              <div className="skeleton h-[68px] w-full" />
+            <div className="card overflow-hidden" aria-hidden>
+              {[0, 1, 2].map((row) => (
+                <div
+                  key={row}
+                  className="flex min-h-[68px] items-center gap-3 border-t border-line p-4 first:border-t-0"
+                >
+                  <div className="skeleton h-10 w-10 flex-none rounded-lg" />
+                  <div className="min-w-0 flex-1">
+                    <div className="skeleton h-4 w-40 max-w-full" />
+                    <div className="skeleton mt-2 h-3 w-24" />
+                  </div>
+                  <div className="skeleton h-6 w-16 rounded-full" />
+                </div>
+              ))}
             </div>
           ) : null}
         </div>
       ) : null}
 
       {query.isError ? (
-        <div className="mt-6">
-          <Alert tone="error">
-            {query.error instanceof ApiError
-              ? friendlyError(query.error.body)
-              : "Couldn't load applications."}{' '}
-            <button
-              type="button"
-              className="btn btn-ghost px-2"
-              onClick={() => void query.refetch()}
-            >
-              Try again
-            </button>
-          </Alert>
+        <div className="card mt-8 px-6 py-12 text-center" role="alert">
+          <h2 className="text-[17px] font-semibold">Couldn't load your applications</h2>
+          <p className="mx-auto mt-2 max-w-md text-[15px] text-muted">Nothing was changed.</p>
+          <button
+            type="button"
+            className="btn btn-secondary mt-6"
+            onClick={() => void query.refetch()}
+          >
+            Try again
+          </button>
         </div>
       ) : null}
 
@@ -177,7 +182,7 @@ export function ListPage() {
                 className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-muted"
               />
               <input
-                className="control !mt-0 pl-9 pr-12"
+                className={`control with-icon !mt-0${draft ? ' with-clear' : ''}`}
                 placeholder="Search company or role"
                 aria-label="Search applications"
                 value={draft}

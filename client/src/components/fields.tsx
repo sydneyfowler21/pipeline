@@ -115,6 +115,7 @@ export function DateField({
   disabled,
   hint,
   error,
+  id,
 }: {
   label: string;
   value: string;
@@ -124,6 +125,7 @@ export function DateField({
   disabled?: boolean;
   hint?: string;
   error?: string;
+  id?: string;
 }) {
   const parsed = parseDate(value);
   const [cursor, setCursor] = useState(() => ({
@@ -158,6 +160,7 @@ export function DateField({
       </span>
       <Popover.Root open={open} onOpenChange={setOpen}>
         <Popover.Trigger
+          id={id}
           type="button"
           className="control mt-1.5 inline-flex items-center justify-between text-left"
           aria-labelledby={labelId}
@@ -267,6 +270,7 @@ export function TimeZoneField({
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const zones = useMemo(() => timeZones(), []);
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -291,11 +295,15 @@ export function TimeZoneField({
         Time zone
       </span>
       <button
+        ref={triggerRef}
         type="button"
+        id="tz-trigger"
         className="control mt-1.5 inline-flex items-center justify-between text-left"
+        role="combobox"
         aria-labelledby="tz-label"
-        aria-haspopup="dialog"
+        aria-haspopup="listbox"
         aria-expanded={open}
+        aria-controls={open ? 'tz-list' : undefined}
         onClick={() => setOpen(true)}
       >
         <span className="truncate">
@@ -323,6 +331,7 @@ export function TimeZoneField({
         title="Time zone"
         description="Search for a time zone."
         sheet
+        returnFocusTo={triggerRef}
       >
         <div className="relative">
           <Search
@@ -330,7 +339,7 @@ export function TimeZoneField({
             className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-muted"
           />
           <input
-            className="control pl-9"
+            className="control with-icon"
             autoFocus
             placeholder="Search time zones"
             aria-label="Search time zones"
@@ -352,6 +361,7 @@ export function TimeZoneField({
           />
         </div>
         <div
+          id="tz-list"
           ref={listRef}
           role="listbox"
           aria-label="Time zones"

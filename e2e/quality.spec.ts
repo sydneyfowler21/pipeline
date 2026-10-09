@@ -16,10 +16,8 @@ test('axe and screenshots for public screens', async ({ page }) => {
   await sweep(page, 'forgot', '/forgot');
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/reset-password?token=this-token-is-long-enough-but-invalid');
-  await page.getByLabel('New password').fill('correct-horse-battery-e2e-91');
-  await page.getByLabel('Confirm password').fill('correct-horse-battery-e2e-91');
-  await page.getByRole('button', { name: 'Save password' }).click();
   await expect(page.getByRole('alert')).toContainText('invalid or expired');
+  await expect(page.getByRole('link', { name: 'Request a new link' })).toBeVisible();
   await capture(page, 'reset-invalid');
 });
 

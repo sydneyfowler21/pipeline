@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  accountInitials,
+  accountLabel,
   activityText,
   daysPhrase,
   friendlyError,
+  rateLimitMessage,
+  signInTroubleHint,
   noResultsCopy,
   noteCounter,
   occurredAtForMove,
@@ -62,8 +66,17 @@ describe('screen copy', () => {
 
   it('keeps known server messages and hides raw failures', () => {
     expect(friendlyError({ error: 'Email or password is incorrect' })).toBe(
-      'Email or password is incorrect',
+      'Email or password is incorrect.',
     );
+    expect(friendlyError({ error: 'Email or password is incorrect.' })).toBe(
+      'Email or password is incorrect.',
+    );
+    expect(rateLimitMessage()).toBe('Too many attempts. Try again in a few minutes.');
+    expect(signInTroubleHint(2)).toBeNull();
+    expect(signInTroubleHint(3)).toBe('Having trouble? Reset your password, or check your email.');
+    expect(accountLabel({ email: 'demo.01a12236@example.test', isDemo: true })).toBe('Demo user');
+    expect(accountLabel({ email: 'ada@example.test', isDemo: false })).toBe('ada@example.test');
+    expect(accountInitials({ email: 'demo.01a12236@example.test', isDemo: true })).toBe('DU');
     expect(friendlyError({ error: 'occurred_at is in the future' })).toBe(
       "Can't be in the future.",
     );

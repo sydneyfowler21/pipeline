@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ApiError, apiJson } from '@/lib/api';
-import { browserTimeZone, friendlyError } from '@/lib/copy';
+import { browserTimeZone, friendlyError, rateLimitMessage, signInTroubleHint } from '@/lib/copy';
 import { Alert, Button } from '@/components/kit';
 import { TextField } from '@/components/fields';
 import { useAuth } from '@/components/auth-context';
@@ -84,6 +84,7 @@ export function SignInPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<'demo' | 'sign-in' | null>(null);
+  const [failedAttempts, setFailedAttempts] = useState(0);
 
   async function startDemo() {
     setPending('demo');
@@ -119,8 +120,13 @@ export function SignInPage() {
       navigate('/applications');
     } catch (err) {
       setPassword('');
+      setFailedAttempts((count) => count + 1);
       setError(
-        err instanceof ApiError ? friendlyError(err.body) : 'Something went wrong. Try again.',
+        err instanceof ApiError
+          ? err.status === 429
+            ? rateLimitMessage()
+            : friendlyError(err.body)
+          : 'Something went wrong. Try again.',
       );
     } finally {
       setPending(null);
@@ -135,11 +141,6 @@ export function SignInPage() {
       <p className="mt-2 text-[15px] leading-[22px] text-muted">
         See every stage an application went through and how many days each one took.
       </p>
-      {error ? (
-        <div className="mt-6">
-          <Alert tone="error">{error}</Alert>
-        </div>
-      ) : null}
       <Button
         className="mt-7 h-12 w-full text-[15px]"
         pending={pending === 'demo'}
@@ -157,6 +158,16 @@ export function SignInPage() {
         <span className="h-px flex-1 bg-line" />
       </div>
       <form onSubmit={(event) => void onSubmit(event)} className="space-y-4">
+        {error ? <Alert tone="error">{error}</Alert> : null}
+        {signInTroubleHint(failedAttempts) ? (
+          <p className="text-[14px] leading-5 text-muted">
+            Having trouble?{' '}
+            <Link to="/forgot" className="font-medium text-accent underline underline-offset-2">
+              Reset your password
+            </Link>
+            , or check your email.
+          </p>
+        ) : null}
         <TextField
           label="Email"
           type="email"
@@ -414,13 +425,32 @@ export function ForgotPage() {
 }
 
 export function ResetPage() {
+  const navigate = useNavigate();
   const [params] = useSearchParams();
   const token = params.get('token');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
+  const [link, setLink] = useState<'checking' | 'valid' | 'invalid'>('checking');
   const [pending, setPending] = useState(false);
+
+  useEffect(() => {
+    if (!token) {
+      setLink('invalid');
+      return;
+    }
+    let cancel = false;
+    apiJson(`/api/auth/reset-password?token=${encodeURIComponent(token)}`)
+      .then(() => {
+        if (!cancel) setLink('valid');
+      })
+      .catch(() => {
+        if (!cancel) setLink('invalid');
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [token]);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -439,8 +469,10 @@ export function ResetPage() {
         method: 'POST',
         body: JSON.stringify({ token, password }),
       });
-      setDone(true);
-      toast.success('Password saved. Sign in with the new one.');
+      toast.success(
+        "Password saved. You've been signed out everywhere. Sign in with your new password.",
+      );
+      navigate('/');
     } catch (err) {
       setError(
         err instanceof ApiError ? friendlyError(err.body) : 'Something went wrong. Try again.',
@@ -455,21 +487,16 @@ export function ResetPage() {
       <h1 className="text-[28px] font-semibold leading-[34px] tracking-tight">
         Choose a new password
       </h1>
-      {!token || error === 'This link is invalid or expired.' ? (
+      {link === 'checking' ? <p className="mt-4 text-muted">Checking this link…</p> : null}
+      {link === 'invalid' ? (
         <div className="mt-4">
           <Alert tone="error">This link is invalid or expired.</Alert>
           <Link to="/forgot" className="btn btn-secondary mt-4 w-full">
             Request a new link
           </Link>
         </div>
-      ) : done ? (
-        <div className="mt-4">
-          <Alert tone="success">Password saved. Every other session has ended.</Alert>
-          <Link to="/" className="btn btn-primary mt-4 w-full">
-            Sign in
-          </Link>
-        </div>
-      ) : (
+      ) : null}
+      {link === 'valid' ? (
         <form onSubmit={(event) => void onSubmit(event)} className="mt-6 space-y-4">
           <Alert tone="warn">Saving a new password signs you out of every device.</Alert>
           {error ? <Alert tone="error">{error}</Alert> : null}
@@ -492,7 +519,7 @@ export function ResetPage() {
             Save password
           </Button>
         </form>
-      )}
+      ) : null}
     </AuthFrame>
   );
 }

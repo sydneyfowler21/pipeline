@@ -22,10 +22,10 @@
       }
       .browser {
         position: absolute;
-        left: 80px;
-        top: 64px;
-        width: 1180px;
-        height: 760px;
+        left: /*BROWSER_X*/ 80px;
+        top: /*BROWSER_Y*/ 64px;
+        width: /*BROWSER_W*/ 1180px;
+        height: /*BROWSER_H*/ 760px;
         overflow: hidden;
         border-radius: 16px;
         background: #fff;
@@ -36,7 +36,7 @@
         height: 40px;
         align-items: center;
         gap: 8px;
-        padding: 0 16px;
+        padding: 0 14px;
         background: #f7f7f5;
         border-bottom: 1px solid #dad9d3;
       }
@@ -47,33 +47,33 @@
         background: #c8c7c0;
       }
       .url {
-        margin-left: 10px;
+        margin-left: 8px;
         display: flex;
-        height: 26px;
+        height: 32px;
         align-items: center;
         border-radius: 999px;
         border: 1px solid #dad9d3;
         background: #fff;
-        padding: 0 12px;
+        padding: 0 14px;
         color: #5a5952;
         font-family: 'Geist Sans', ui-sans-serif, system-ui, sans-serif;
-        font-size: 12px;
-        line-height: 16px;
+        font-size: 22px;
+        line-height: 26px;
       }
-      .desktop {
+      #shot {
         display: block;
-        width: 1180px;
-        height: 720px;
-        object-fit: cover;
-        object-position: top left;
+        width: /*DESKTOP_W*/ 1180px;
+        height: /*SHOT_H*/ 720px;
+        object-fit: fill;
+        background: #f7f7f5;
       }
       .phone {
         position: absolute;
-        left: 1190px;
-        top: 150px;
+        left: /*PHONE_X*/ 1260px;
+        top: /*PHONE_Y*/ 105px;
         box-sizing: border-box;
-        width: 340px;
-        height: 690px;
+        width: /*PHONE_W*/ 340px;
+        height: /*PHONE_H*/ 690px;
         padding: 12px;
         border-radius: 44px;
         background: #17171c;
@@ -81,12 +81,15 @@
       }
       .phone img {
         display: block;
-        width: 316px;
-        height: 666px;
-        border-radius: 34px;
+        width: 100%;
+        height: 100%;
+        border-radius: 32px;
         object-fit: cover;
-        object-position: top left;
+        object-position: top center;
         background: #f7f7f5;
+      }
+      .phone.hidden {
+        display: none;
       }
     </style>
   </head>
@@ -97,11 +100,11 @@
           <span class="dot"></span>
           <span class="dot"></span>
           <span class="dot"></span>
-          <div class="url" id="url"></div>
+          <div class="url" id="url">/applications/acme-robotics</div>
         </div>
-        <img class="desktop" id="desktop" alt="" />
+        <img id="shot" alt="" />
       </div>
-      <div class="phone">
+      <div class="phone" id="phone-frame">
         <img id="phone" alt="" />
       </div>
     </div>

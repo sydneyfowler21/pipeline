@@ -2,6 +2,8 @@
 
 **Approved for slice 1 (Oct 9 2026)** — Tech Lead and Sydney.
 
+**Correction (Oct 9, 2:04 PM MT, Tech Lead):** The login error stays exactly “Email or password is incorrect.” for wrong password, unknown email and any other failure. The remaining lockout time (“Too many attempts. Try again in N minutes.” / `retryAfterSeconds`) may appear **only** on the lockout response, and only if that response is byte-identical (status, body, headers, timing class) for emails that don't exist, so it can't reveal whether an account exists. If that can't be guaranteed, the lockout response uses the generic message with no time.
+
 **v2 (Oct 9, 2026)** folds in Tech Lead's answers to the 9 v1 questions: list search + stage filter; 280-char stage-change note with counter; the page is **Settings** (Security + Preferences); change password; sessions show device/browser + IP only; per-session Sign out; README hero captured by a Playwright script (§4.10); time zone auto-detected at sign-up and editable in Preferences; demo "Create your own account" signs out first. Mobile inputs are 16px. Dark mode is after slice 1. v1 is kept as `BRIEF.v1.md`.
 
 Designer: Dani · v1 and v2 Oct 9, 2026 · Sources: `SPEC.md` and `docs/plans/slice-1.md` on `main` (read via GitHub). The repo wins: if this brief and SPEC disagree, SPEC is right and this file gets fixed.
@@ -13,7 +15,7 @@ A public portfolio app: a stranger signs in (or taps **Try the demo**), adds a j
 
 Locked facts the design follows:
 - Stages are a fixed enum: **Applied, Screen, Interview, Offer, Closed**. Any stage → any other (revisits; Closed can reopen). Same stage → 409 "Already in this stage".
-- Creating an application writes an Applied event at applied_on 12:00 local. `applied_on` is required, not in the future, and **not editable** after creation.
+- Creating an application writes an Applied event at **local midnight on applied_on**, or at created_at if applied_on is today (as SPEC says; v1 of this brief wrongly said 12:00). `applied_on` is required, not in the future, and **not editable** after creation.
 - Stage move: optional `occurred_at` (default now), not in the future, not earlier than the latest event (equal OK). Optional event note.
 - Days in stage = local-date difference; the current visit counts to today. Revisits shown per visit **plus** per-stage totals.
 - List sorted by last activity = greatest(latest event, updated_at) desc; shows company, role, stage badge, days in current stage, last activity.
@@ -87,7 +89,7 @@ Timeline nodes use the dot color with a white icon; the current visit node gets 
 Button (primary / secondary / ghost / destructive-outline), Input, Textarea with counter, Date picker (Popover + Calendar with disabled ranges), RadioGroup cards (stage picker), Dialog / Sheet, AlertDialog (delete, sign out everywhere), DropdownMenu (⋯, account), Badge (stage chip, "Visit 2", "Current", "Coming in slice 2", "This device"), Table/cards list, Skeleton, Alert (inline), Sonner toast, Tabs-like nav, segmented control (Settings sections on mobile), Combobox (Command + Popover; Sheet on mobile) for time zone, search Input with clear button, filter chip toggle group. States for each are in `png/14-states-*.png` and §7.
 
 ## 4. Per-screen specs (see annotations in each PNG)
-1. **Landing / sign in** (`01`): Try the demo is the primary, full-width button first in the card, with "No sign-up. Sample data, deleted after 24 hours." Sign in is secondary. Right dark panel (≥1024) shows a real stage strip; hidden on mobile so the demo CTA is above the fold. Wrong credentials / unknown email → one message. Lockout shows remaining time.
+1. **Landing / sign in** (`01`): Try the demo is the primary, full-width button first in the card, with "No sign-up. Sample data, deleted after 24 hours." Sign in is secondary. Right dark panel (≥1024) shows a real stage strip; hidden on mobile so the demo CTA is above the fold. Wrong credentials / unknown email → one message. Lockout: see the correction at the top — remaining time only on an enumeration-proof lockout response.
 2. **Sign up** (`02`): email, password (rule shown up front), confirm. Validation on blur/submit. Breach message from server. Always continues to "check your email".
 3. **Verify email** (`03`): neutral copy, resend with countdown reason, success and expired-link states, and the in-app unverified banner + disabled Add with reason.
 4. **Forgot / reset** (`04`, `05`): generic confirmation; reset warns before saving that every session ends; invalid/expired token replaces the form.
@@ -107,11 +109,13 @@ Button (primary / secondary / ghost / destructive-outline), Input, Textarea with
 12. **README hero capture spec** (script at the repo root, `scripts/readme-hero.ts`, run manually or in a release workflow; not in the PR gate):
    - **Target app:** a local or test build (`npm run dev` against a seeded DB); `?screenshot=1` does not exist in production. Light mode only. Locale en-US, time zone America/Denver, `today` frozen to **2026-10-09** (Playwright `clock.setFixedTime('2026-10-09T18:00:00Z')`) so day counts match the fixture.
    - **Data state:** Try the demo (POST demo) → demo user seeded from `fixtures/slice-1.json` user A (Acme Robotics, Northwind Labs, Globex) plus demo seed Initech (Screen, Oct 2) and Hooli (Closed, Sep 10). Hide the demo banner with a `data-screenshot` attribute on `<html>` (set by the script via `?screenshot=1`; ignored in production otherwise). No pins, no toasts, no focus rings: blur active element, move the mouse to (0,0), wait for `networkidle` and fonts (`document.fonts.ready`).
-   - **Shot A (desktop):** route `/applications/<Acme Robotics id>`, viewport **1440×900**, DPR 2, clip x 0, y 0, 1440×928 (header + detail through the 5th timeline row; content may be cut at the bottom).
-   - **Shot B (mobile):** route `/applications`, viewport **390×844**, DPR 2, clip 0,0,390×844 (header, title, Add, five cards).
-   - **Composition** (a second Playwright page rendering a local HTML template `scripts/hero-frame.html` (repo root) with the two PNGs as `<img>`): canvas **1600×900**, background #F2F1EC with two soft radial tints (#E4DFFB top-right, #E3EFE8 bottom-left). Browser frame 1180×760 at (80,64), radius 16, 40px light title bar with three dots and a URL pill showing the live host + `/applications/acme-robotics`, shadow e3; Shot A scaled to 1180 wide. Phone frame 340×690 at (1190,150), ink bezel 12px, radius 44 / 34 inner; Shot B scaled to 316 wide. Render at DPR 1 and also DPR 2.
+   - **Shot A (desktop):** route `/applications/<Acme Robotics id>?screenshot=1`, viewport **1280×720**, deviceScaleFactor **2**. Crop to the page header (wordmark + nav + account button), the application header, **Stage history** and **Time per stage** only — no Notes card, no empty canvas below. Drop the 1440×928 capture.
+   - **Shot B (mobile):** route `/applications?screenshot=1`, viewport **390×844**, DPR 2, clip 0,0,390×844 (header, title, Add, cards).
+   - **Account button:** shows a friendly name, **"Demo user"**, for demo accounts — never `demo.<uuid>@example.test` (fix in the app, not only in the capture).
+   - **Composition** (`scripts/hero-frame.html`, repo root): canvas **1600×900**, background #F2F1EC with soft radial tints (#E4DFFB top-right, #E3EFE8 bottom-left). Browser frame at (80,64), radius 16, 40px light title bar with three dots and a URL pill that reads exactly **`/applications/acme-robotics`** — no host, never `localhost`. Shot A fills the frame at its cropped size. Phone frame 340×690 right, ink bezel 12px, radius 44 / 34; Shot B scaled to 316 wide.
+   - **Legibility gate:** GitHub shows the README image at about **880px** wide (0.55× of 1600). Every piece of text in the hero must be **≥12px at that width**, i.e. ≥22px in the 1600 canvas. The script asserts this: for each text node in the captured pages, CSS font-size × (frame width ÷ captured CSS width) × 0.55 ≥ 12, and fails otherwise. In practice this means a tight crop plus page zoom (e.g. capture with `document.documentElement.style.zoom` so body text is ~1.6× before scaling into the frame); deviceScaleFactor alone adds sharpness, not size.
    - **Output:** `docs/images/readme-hero.png` (1600×900) and `docs/images/readme-hero@2x.png` (3200×1800); README uses the 1x with `width="100%"` and alt text "pipeline: an application's stage history with revisits and time per stage, next to the list on mobile". Commit the PNGs; rerun the script when the UI changes.
-   - **Check:** visually diff against `docs/design/png/15-readme-hero.png` (layout, not pixels); every text in the shot is ≥12px at 880px display width.
+   - **Check:** visually diff against `docs/design/png/15-readme-hero.png` (layout, not pixels); every text in the shot is ≥12px at 880px display width (see the legibility gate above).
 
 
 ## 5. Interaction checklist (applies to every screen from day one; review on the live preview, not stills)
@@ -242,7 +246,7 @@ New components in v2:
 10. **Change password** `POST /api/me/password { currentPassword, newPassword }`: verify current (failures count toward the login lockout), apply 12–128 + HIBP, reject equal to current; on success delete every **other** session, rotate the current session id, write `password_changed` auth event. 403 for demo users. Rate-limited per account.
 11. **Auth events** (last 50): add kinds `password_changed` and `session_revoked` to SPEC's audit list; return display label, parsed device, ip, created_at.
 12. **Demo "Create your own account"**: client calls the normal sign-out, then routes to `/signup`; no new endpoint.
-13. **Error shapes**: lockout and resend return `retryAfterSeconds`; 422s are field-keyed `{ field, message }`.
+13. **Error shapes**: resend returns `retryAfterSeconds`; lockout may return it only if the lockout response is identical for nonexistent emails (see the correction at the top); 422s are field-keyed `{ field, message }`.
 14. **SPEC/fixture follow-ups for Tech Lead**: SPEC currently lists no change-password, per-session revoke, preferences, event-note limit or the two new audit kinds; they need adding in the PR that builds them.
 
 ## 9. Open questions for Tech Lead

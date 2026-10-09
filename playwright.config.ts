@@ -40,7 +40,7 @@ export default defineConfig({
     },
     {
       name: 'quality',
-      testMatch: /quality\.spec\.ts/,
+      testMatch: /quality\.spec\.ts|review\.spec\.ts/,
       use: { video: 'off' },
     },
   ],

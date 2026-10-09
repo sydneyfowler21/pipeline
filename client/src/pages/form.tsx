@@ -3,7 +3,7 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ApiError, apiJson } from '@/lib/api';
-import { friendlyError, todayInZone } from '@/lib/copy';
+import { formatCalendarDate, friendlyError, todayInZone } from '@/lib/copy';
 import type { ApplicationDetail } from '@/lib/types';
 import { Alert, Button } from '@/components/kit';
 import { DateField, TextAreaField, TextField } from '@/components/fields';
@@ -52,7 +52,7 @@ function Form({ initial }: { initial: ApplicationDetail | null }) {
   const [pending, setPending] = useState(false);
   const editing = Boolean(initial);
 
-  function validate() {
+  function fieldErrors() {
     const next: Record<string, string> = {};
     if (company.trim().length < 1 || company.trim().length > 120)
       next.company = 'Enter a company (1–120 characters).';
@@ -69,14 +69,27 @@ function Form({ initial }: { initial: ApplicationDetail | null }) {
     }
     if (notes.length > 5000) next.notes = 'Notes must be 5,000 characters or fewer.';
     if (!editing && appliedOn > todayInZone(zone)) next.appliedOn = "Can't be in the future.";
+    return next;
+  }
+
+  function validate() {
+    const next = fieldErrors();
     setErrors(next);
-    return Object.keys(next).length === 0;
+    return next;
   }
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
+    const next = validate();
+    const order = ['company', 'role', 'url', 'appliedOn', 'notes'];
+    const invalid = order.filter((field) => next[field]);
+    if (invalid.length > 0) {
+      const noun = invalid.length === 1 ? 'field' : 'fields';
+      setFormError(`Fix ${invalid.length} ${noun} to save`);
+      document.getElementById(invalid[0] ?? '')?.focus();
+      return;
+    }
     setFormError(null);
-    if (!validate()) return;
     setPending(true);
     const payload = {
       company: company.trim(),
@@ -130,24 +143,27 @@ function Form({ initial }: { initial: ApplicationDetail | null }) {
           <Alert tone="error">{formError}</Alert>
         </div>
       ) : null}
-      <form onSubmit={(event) => void onSubmit(event)} className="mt-6 space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2">
+      <form onSubmit={(event) => void onSubmit(event)} className="mt-6 min-w-0 space-y-4">
+        <div className="grid min-w-0 gap-4 sm:grid-cols-2">
           <TextField
+            id="company"
             label="Company"
             value={company}
             error={errors.company}
             onChange={(event) => setCompany(event.target.value)}
-            onBlur={validate}
+            onBlur={() => validate()}
           />
           <TextField
+            id="role"
             label="Role"
             value={role}
             error={errors.role}
             onChange={(event) => setRole(event.target.value)}
-            onBlur={validate}
+            onBlur={() => validate()}
           />
         </div>
         <TextField
+          id="url"
           label="Job posting"
           type="url"
           value={url}
@@ -157,14 +173,16 @@ function Form({ initial }: { initial: ApplicationDetail | null }) {
         />
         {editing ? (
           <TextField
+            id="appliedOn"
             label="Applied on"
-            value={appliedOn}
+            value={formatCalendarDate(appliedOn, true)}
             disabled
             hint="Applied on can't be changed."
             readOnly
           />
         ) : (
           <DateField
+            id="appliedOn"
             label="Applied on"
             value={appliedOn}
             max={todayInZone(zone)}
@@ -173,6 +191,7 @@ function Form({ initial }: { initial: ApplicationDetail | null }) {
           />
         )}
         <TextAreaField
+          id="notes"
           label="Notes"
           value={notes}
           error={errors.notes}

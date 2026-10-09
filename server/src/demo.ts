@@ -39,7 +39,7 @@ const DEMO_APPS: Array<{
     company: 'Acme Robotics',
     role: 'Frontend Engineer',
     notes: 'Recruiter replied the same week.',
-    stages: ['Applied', 'Screen'],
+    stages: ['Applied', 'Screen', 'Interview', 'Screen', 'Interview', 'Offer'],
     startDaysAgo: 21,
   },
   {

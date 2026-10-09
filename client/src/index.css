@@ -57,7 +57,7 @@ body {
 
 .num {
   font-variant-numeric: tabular-nums;
-  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-family: inherit;
 }
 
 :focus-visible {
@@ -209,6 +209,7 @@ a:hover {
 
 .field {
   display: block;
+  min-width: 0;
 }
 
 .field-label {
@@ -222,6 +223,9 @@ a:hover {
   margin-top: 6px;
   height: 44px;
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   border-radius: 8px;
   border: 1px solid var(--edge);
   background: var(--surface);
@@ -230,6 +234,23 @@ a:hover {
   font: inherit;
   font-size: 16px;
   line-height: 24px;
+}
+
+.control.with-icon {
+  padding-left: 40px;
+}
+
+.control.with-clear {
+  padding-right: 48px;
+}
+
+button.control:hover {
+  border-color: var(--ink);
+}
+
+.control:disabled {
+  cursor: not-allowed;
+  background: var(--subtle);
 }
 
 textarea.control {
@@ -494,6 +515,22 @@ textarea.control {
   padding: 8px 12px;
   background: var(--surface);
 }
+
+.choice::before {
+  content: '';
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border-radius: 999px;
+  border: 2px solid var(--edge);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 5px transparent;
+}
+
+.choice[data-state='checked']::before {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 5px var(--accent);
+}
 .choice:hover {
   background: var(--hover);
   box-shadow: inset 3px 0 0 var(--accent);
@@ -520,14 +557,28 @@ textarea.control {
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
   width: min(480px, calc(100vw - 32px));
-  max-height: min(720px, calc(100vh - 32px));
-  overflow: auto;
+  max-height: calc(100dvh - 32px);
+  overflow: hidden;
   background: var(--surface);
   color: var(--ink);
   border-radius: 16px;
   padding: 24px;
   box-shadow: 0 24px 48px -12px rgba(23, 23, 28, 0.28);
+}
+
+.dialog-body {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+}
+
+.dialog-footer {
+  flex: none;
+  padding-top: 12px;
+  background: var(--surface);
 }
 
 .dialog-content.sheet {
@@ -542,7 +593,7 @@ textarea.control {
     transform: none;
     width: 100%;
     border-radius: 16px 16px 0 0;
-    max-height: 88vh;
+    max-height: calc(100dvh - 16px);
   }
 }
 
@@ -604,13 +655,19 @@ textarea.control {
 }
 
 .skeleton {
-  background: var(--subtle);
+  background: #c8c6bc;
   border-radius: 6px;
+}
+
+.user-text {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .skeleton {
-    background: linear-gradient(90deg, #efefeb 0%, #f7f7f5 50%, #efefeb 100%);
+    background: linear-gradient(90deg, #c8c6bc 0%, #e4e2da 50%, #c8c6bc 100%);
     background-size: 200% 100%;
     animation: shimmer 1.2s linear infinite;
   }
@@ -644,8 +701,74 @@ textarea.control {
 
 html[data-screenshot] .demo-banner,
 html[data-screenshot] .unverified-banner,
-html[data-screenshot] [data-sonner-toaster] {
+html[data-screenshot] [data-sonner-toaster],
+html[data-screenshot] .back-link {
   display: none !important;
+}
+
+html[data-screenshot] .max-w-page {
+  max-width: 620px;
+}
+
+html[data-screenshot] header > div {
+  height: 48px;
+}
+
+html[data-screenshot] main {
+  padding: 4px 16px 0;
+}
+
+html[data-screenshot] .card {
+  padding: 8px 10px;
+}
+
+html[data-screenshot] #detail-heading {
+  font-size: 20px;
+  line-height: 24px;
+}
+
+html[data-screenshot] .mt-3 {
+  margin-top: 0 !important;
+}
+
+html[data-screenshot] .mt-4 {
+  margin-top: 4px !important;
+}
+
+html[data-screenshot] .mt-8 {
+  margin-top: 8px !important;
+}
+
+html[data-screenshot] .btn {
+  min-height: 32px;
+  height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+html[data-screenshot] .icon-btn {
+  width: 32px;
+  height: 32px;
+}
+
+html[data-screenshot] .job-link {
+  min-height: 20px;
+}
+
+html[data-screenshot] .chip {
+  height: 20px;
+  font-size: 13px;
+}
+
+html[data-screenshot] ol > li + li {
+  margin-top: 2px !important;
+}
+
+html[data-screenshot] [aria-labelledby='history-heading'] p,
+html[data-screenshot] [aria-labelledby='totals-heading'] p {
+  margin-top: 0;
+  font-size: 13.5px;
+  line-height: 16px;
 }
 
 [data-sonner-toast] {

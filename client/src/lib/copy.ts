@@ -28,12 +28,13 @@ export function formatInstant(iso: string, timeZone: string): string {
   }).format(new Date(iso));
 }
 
-export function formatCalendarDate(isoDate: string): string {
+export function formatCalendarDate(isoDate: string, withYear = false): string {
   const [year, month, day] = isoDate.split('-').map(Number);
   if (!year || !month || !day) return isoDate;
   return new Intl.DateTimeFormat('en-US', {
     month: 'short',
     day: 'numeric',
+    year: withYear ? 'numeric' : undefined,
     timeZone: 'UTC',
   }).format(new Date(Date.UTC(year, month - 1, day)));
 }
@@ -65,6 +66,24 @@ export function noResultsCopy(query: string, stage: string | null): string {
   if (q) return `No applications match “${q}”`;
   if (stage) return `No applications match in ${stage}`;
   return 'No applications match';
+}
+
+export function accountLabel(user: { email: string; isDemo: boolean }): string {
+  return user.isDemo ? 'Demo user' : user.email;
+}
+
+export function accountInitials(user: { email: string; isDemo: boolean }): string {
+  return user.isDemo ? 'DU' : initials(user.email);
+}
+
+/** Bobby's login lockout is a generic 401. A 429 is only the rate limit, with no retry time. */
+export function rateLimitMessage(): string {
+  return 'Too many attempts. Try again in a few minutes.';
+}
+
+export function signInTroubleHint(failedAttempts: number): string | null {
+  if (failedAttempts < 3) return null;
+  return 'Having trouble? Reset your password, or check your email.';
 }
 
 export function initials(email: string): string {
@@ -127,7 +146,9 @@ export function friendlyError(body: { error?: string; message?: string } | null)
   if (/future/i.test(text)) return "Can't be in the future.";
   if (/earlier/i.test(text)) return "Can't be before the last change.";
   if (text === 'Already in this stage') return 'Already in this stage';
-  if (text === 'Email or password is incorrect') return 'Email or password is incorrect';
+  if (text === 'Email or password is incorrect' || text === 'Email or password is incorrect.') {
+    return 'Email or password is incorrect.';
+  }
   if (text.includes("we've sent a link")) return "If that email can be used, we've sent a link.";
   if (text === 'Current password is incorrect') return 'Current password is incorrect.';
   if (text === 'Sign out here from the account menu.') return text;

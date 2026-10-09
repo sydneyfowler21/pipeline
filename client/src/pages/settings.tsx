@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 import { ApiError, apiJson } from '@/lib/api';
 import {
@@ -227,6 +227,7 @@ function SessionItem({ row, nextId }: { row: SessionRow; nextId?: string }) {
 
 function SignOutEverywhere({ count }: { count: number }) {
   const queryClient = useQueryClient();
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const { refresh } = useAuth();
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
@@ -248,6 +249,7 @@ function SignOutEverywhere({ count }: { count: number }) {
   return (
     <div className="mt-4">
       <button
+        ref={triggerRef}
         id="sign-out-everywhere"
         type="button"
         className="btn btn-danger"
@@ -258,6 +260,7 @@ function SignOutEverywhere({ count }: { count: number }) {
       <ConfirmDialog
         open={open}
         onOpenChange={setOpen}
+        returnFocusTo={triggerRef}
         title="Sign out everywhere?"
         description={`This signs out all ${count} ${count === 1 ? 'device' : 'devices'}, including this one.`}
         confirmLabel="Sign out everywhere"

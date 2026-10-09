@@ -2,7 +2,12 @@ import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { Loader2, X } from 'lucide-react';
-import { type ButtonHTMLAttributes, type ReactNode } from 'react';
+import {
+  forwardRef,
+  type ButtonHTMLAttributes,
+  type ReactNode,
+  type RefObject,
+} from 'react';
 import { cn } from '@/lib/utils';
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'session';
@@ -15,23 +20,30 @@ const VARIANT: Record<ButtonVariant, string> = {
   session: 'btn btn-secondary btn-session',
 };
 
-export function Button({
-  variant = 'primary',
-  pending = false,
-  pendingLabel,
-  className,
-  children,
-  type = 'button',
-  onMouseDown,
-  ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: ButtonVariant;
-  pending?: boolean;
-  pendingLabel?: string;
-}) {
+export const Button = forwardRef<
+  HTMLButtonElement,
+  ButtonHTMLAttributes<HTMLButtonElement> & {
+    variant?: ButtonVariant;
+    pending?: boolean;
+    pendingLabel?: string;
+  }
+>(function Button(
+  {
+    variant = 'primary',
+    pending = false,
+    pendingLabel,
+    className,
+    children,
+    type = 'button',
+    onMouseDown,
+    ...props
+  },
+  ref,
+) {
   return (
     <button
       {...props}
+      ref={ref}
       type={type}
       className={cn(VARIANT[variant], className)}
       disabled={props.disabled || pending}
@@ -53,7 +65,7 @@ export function Button({
       )}
     </button>
   );
-}
+});
 
 export function Spinner({ label }: { label: string }) {
   return (
@@ -64,26 +76,40 @@ export function Spinner({ label }: { label: string }) {
   );
 }
 
+function restoreFocus(event: Event, returnFocusTo?: RefObject<HTMLElement | null>) {
+  const target = returnFocusTo?.current;
+  if (!target) return;
+  event.preventDefault();
+  target.focus();
+}
+
 export function Modal({
   open,
   onOpenChange,
   title,
   description,
   children,
+  footer,
   sheet = false,
+  returnFocusTo,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
   description?: string;
   children: ReactNode;
+  footer?: ReactNode;
   sheet?: boolean;
+  returnFocusTo?: RefObject<HTMLElement | null>;
 }) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="overlay" />
-        <Dialog.Content className={sheet ? 'dialog-content sheet' : 'dialog-content'}>
+        <Dialog.Content
+          className={sheet ? 'dialog-content sheet' : 'dialog-content'}
+          onCloseAutoFocus={(event) => restoreFocus(event, returnFocusTo)}
+        >
           <div className="flex items-start justify-between gap-3">
             <Dialog.Title className="text-[17px] font-semibold leading-6">{title}</Dialog.Title>
             <Dialog.Close className="icon-btn btn btn-ghost" aria-label="Close">
@@ -97,7 +123,8 @@ export function Modal({
           ) : (
             <Dialog.Description className="sr-only">{title}</Dialog.Description>
           )}
-          <div className="mt-4">{children}</div>
+          <div className="dialog-body mt-4">{children}</div>
+          {footer ? <div className="dialog-footer">{footer}</div> : null}
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
@@ -113,6 +140,7 @@ export function ConfirmDialog({
   pending,
   onConfirm,
   danger = false,
+  returnFocusTo,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -122,12 +150,16 @@ export function ConfirmDialog({
   pending?: boolean;
   onConfirm: () => void;
   danger?: boolean;
+  returnFocusTo?: RefObject<HTMLElement | null>;
 }) {
   return (
     <AlertDialog.Root open={open} onOpenChange={onOpenChange}>
       <AlertDialog.Portal>
         <AlertDialog.Overlay className="overlay" />
-        <AlertDialog.Content className="dialog-content">
+        <AlertDialog.Content
+          className="dialog-content"
+          onCloseAutoFocus={(event) => restoreFocus(event, returnFocusTo)}
+        >
           <AlertDialog.Title className="text-[17px] font-semibold leading-6">
             {title}
           </AlertDialog.Title>
@@ -161,15 +193,17 @@ export function Menu({
   trigger,
   children,
   className = 'btn btn-secondary h-11 gap-2 rounded-full pl-1 pr-2',
+  triggerRef,
 }: {
   label: string;
   trigger: ReactNode;
   children: ReactNode;
   className?: string;
+  triggerRef?: RefObject<HTMLButtonElement | null>;
 }) {
   return (
     <DropdownMenu.Root>
-      <DropdownMenu.Trigger className={className} aria-label={label}>
+      <DropdownMenu.Trigger ref={triggerRef} className={className} aria-label={label}>
         {trigger}
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>

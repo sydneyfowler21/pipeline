@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as RadioGroup from '@radix-ui/react-radio-group';
 import { MoreHorizontal } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import type { Stage } from '@pipeline/shared';
@@ -60,6 +60,8 @@ function Detail({ application }: { application: ApplicationDetail }) {
   const queryClient = useQueryClient();
   const [moveOpen, setMoveOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const moveTrigger = useRef<HTMLButtonElement>(null);
+  const moreTrigger = useRef<HTMLButtonElement>(null);
   const [deleting, setDeleting] = useState(false);
   const maxDays = Math.max(1, ...STAGES.map((stage) => application.totals[stage] ?? 0));
 
@@ -78,7 +80,7 @@ function Detail({ application }: { application: ApplicationDetail }) {
   }
 
   return (
-    <div>
+    <div className="min-w-0">
       <BackLink to="/applications">All applications</BackLink>
       <div className="mt-3 flex flex-wrap items-start gap-4">
         <span
@@ -90,17 +92,17 @@ function Detail({ application }: { application: ApplicationDetail }) {
           <h1
             id="detail-heading"
             tabIndex={-1}
-            className="truncate text-[26px] font-semibold leading-8 tracking-tight sm:text-[30px] sm:leading-9"
+            className="min-w-0 truncate text-[26px] font-semibold leading-8 tracking-tight sm:text-[30px] sm:leading-9"
             title={application.company}
           >
             {application.company}
           </h1>
-          <p className="truncate text-[15px] text-muted" title={application.role}>
+          <p className="min-w-0 truncate text-[15px] text-muted" title={application.role}>
             {application.role}
           </p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-          <Button className="w-full sm:w-auto" onClick={() => setMoveOpen(true)}>
+          <Button ref={moveTrigger} className="w-full sm:w-auto" onClick={() => setMoveOpen(true)}>
             Move to stage
           </Button>
           <Link
@@ -112,6 +114,7 @@ function Detail({ application }: { application: ApplicationDetail }) {
           <Menu
             label="More actions"
             className="icon-btn btn btn-secondary"
+            triggerRef={moreTrigger}
             trigger={<MoreHorizontal aria-hidden className="h-4 w-4" />}
           >
             <MenuItem danger onSelect={() => setDeleteOpen(true)}>
@@ -129,7 +132,7 @@ function Detail({ application }: { application: ApplicationDetail }) {
         <span>Applied {formatCalendarDate(application.appliedOn)}</span>
         {application.url ? (
           <a
-            className="text-accent underline underline-offset-2"
+            className="job-link inline-flex min-h-11 items-center text-accent underline underline-offset-2"
             href={application.url}
             rel="noreferrer"
           >
@@ -138,8 +141,8 @@ function Detail({ application }: { application: ApplicationDetail }) {
         ) : null}
       </div>
 
-      <div className="mt-8 grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.8fr)]">
-        <section className="card p-5 sm:p-6" aria-labelledby="history-heading">
+      <div className="mt-8 grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,0.8fr)]">
+        <section className="card min-w-0 p-5 sm:p-6" aria-labelledby="history-heading">
           <h2 id="history-heading" className="text-[17px] font-semibold leading-6">
             Stage history
           </h2>
@@ -149,10 +152,10 @@ function Detail({ application }: { application: ApplicationDetail }) {
                 key={`${visit.occurredAt}-${visit.stage}-${visit.visitNumber}`}
                 id={index === 0 ? 'latest-visit' : undefined}
                 tabIndex={index === 0 ? -1 : undefined}
-                className="flex gap-3"
+                className="flex min-w-0 gap-3"
               >
                 <span className={`mt-1 h-3 w-3 flex-none rounded-full dot-${visit.stage}`} />
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <StageChip stage={visit.stage} />
                     {visit.visitNumber > 1 ? (
@@ -170,13 +173,13 @@ function Detail({ application }: { application: ApplicationDetail }) {
                     {formatCalendarDate(visit.enteredLocal)} ·{' '}
                     {daysPhrase(visit.days, Boolean(visit.current))}
                   </p>
-                  {visit.note ? <p className="mt-1 text-[14px]">{visit.note}</p> : null}
+                  {visit.note ? <p className="user-text mt-1 text-[14px]">{visit.note}</p> : null}
                 </div>
               </li>
             ))}
           </ol>
         </section>
-        <section className="card p-5 sm:p-6" aria-labelledby="totals-heading">
+        <section className="card min-w-0 p-5 sm:p-6" aria-labelledby="totals-heading">
           <h2 id="totals-heading" className="text-[17px] font-semibold leading-6">
             Time per stage
           </h2>
@@ -212,12 +215,17 @@ function Detail({ application }: { application: ApplicationDetail }) {
         <h2 id="notes-heading" className="text-[17px] font-semibold leading-6">
           Notes
         </h2>
-        <p className="mt-2 whitespace-pre-wrap text-[15px] leading-[22px]">
+        <p className="user-text mt-2 text-[15px] leading-[22px]">
           {application.notes.trim() ? application.notes : 'No running summary yet.'}
         </p>
       </section>
 
-      <MoveDialog application={application} open={moveOpen} onOpenChange={setMoveOpen} />
+      <MoveDialog
+        application={application}
+        open={moveOpen}
+        onOpenChange={setMoveOpen}
+        returnFocusTo={moveTrigger}
+      />
       <ConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
@@ -227,6 +235,7 @@ function Detail({ application }: { application: ApplicationDetail }) {
         danger
         pending={deleting}
         onConfirm={() => void remove()}
+        returnFocusTo={moreTrigger}
       />
     </div>
   );
@@ -258,10 +267,12 @@ function MoveDialog({
   application,
   open,
   onOpenChange,
+  returnFocusTo,
 }: {
   application: ApplicationDetail;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  returnFocusTo: RefObject<HTMLButtonElement | null>;
 }) {
   const queryClient = useQueryClient();
   const [stage, setStage] = useState<Stage | ''>('');
@@ -327,9 +338,21 @@ function MoveDialog({
     <Modal
       open={open}
       onOpenChange={onOpenChange}
-      title="Move to stage"
+      title={`Move ${application.company}`}
       description="History is added. Earlier stages stay on the timeline."
       sheet
+      returnFocusTo={returnFocusTo}
+      footer={
+        <Button
+          className="w-full"
+          disabled={!stage || over}
+          pending={pending}
+          pendingLabel="Moving…"
+          onClick={() => void move()}
+        >
+          {stage ? `Move to ${stage}` : 'Move to stage'}
+        </Button>
+      }
     >
       {error ? (
         <div className="mb-3">
@@ -371,7 +394,7 @@ function MoveDialog({
         />
       </div>
       <label className="field mt-4">
-        <span className="field-label">Note</span>
+        <span className="field-label">Note (optional)</span>
         <textarea
           className="control"
           value={note}
@@ -388,15 +411,6 @@ function MoveDialog({
         {counter.text}
       </p>
       {over ? <p className="text-[13px] text-danger">Shorten the note to move.</p> : null}
-      <Button
-        className="mt-4 w-full"
-        disabled={!stage || over}
-        pending={pending}
-        pendingLabel="Moving…"
-        onClick={() => void move()}
-      >
-        {stage ? `Move to ${stage}` : 'Move to stage'}
-      </Button>
     </Modal>
   );
 }
