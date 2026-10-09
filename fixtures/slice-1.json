@@ -1,0 +1,112 @@
+{
+  "description": "Slice-1 fixture for pipeline. Fictional data only.",
+  "timeZone": "America/Denver",
+  "today": "2026-10-09",
+  "now": "2026-10-09T18:00:00Z",
+  "dayRule": "visit days = local date of next event (or today) minus local date of this event",
+  "users": [
+    { "key": "A", "email": "alex.demo@example.test", "password": "correct-horse-battery-A1", "timeZone": "America/Denver" },
+    { "key": "B", "email": "blair.demo@example.test", "password": "correct-horse-battery-B2", "timeZone": "America/Denver" }
+  ],
+  "applications": [
+    {
+      "key": "A1", "user": "A", "company": "Acme Robotics", "role": "Frontend Engineer",
+      "url": "https://example.test/acme/frontend", "notes": "Panel went well; waiting on offer details.",
+      "applied_on": "2026-08-03", "updated_at": "2026-08-03T18:00:00Z",
+      "events": [
+        { "stage": "Applied",   "occurred_at": "2026-08-03T18:00:00Z", "note": null },
+        { "stage": "Screen",    "occurred_at": "2026-08-10T16:00:00Z", "note": "Recruiter call" },
+        { "stage": "Interview", "occurred_at": "2026-08-19T15:30:00Z", "note": "Tech screen" },
+        { "stage": "Screen",    "occurred_at": "2026-08-24T17:00:00Z", "note": "Re-screened for a different team" },
+        { "stage": "Interview", "occurred_at": "2026-09-01T04:30:00Z", "note": "Late-evening invite (Aug 31 local)" },
+        { "stage": "Offer",     "occurred_at": "2026-09-14T20:00:00Z", "note": "Verbal offer" }
+      ],
+      "expected": {
+        "currentStage": "Offer",
+        "visits": [
+          { "stage": "Applied",   "enteredLocal": "2026-08-03", "days": 7 },
+          { "stage": "Screen",    "enteredLocal": "2026-08-10", "days": 9 },
+          { "stage": "Interview", "enteredLocal": "2026-08-19", "days": 5 },
+          { "stage": "Screen",    "enteredLocal": "2026-08-24", "days": 7 },
+          { "stage": "Interview", "enteredLocal": "2026-08-31", "days": 14 },
+          { "stage": "Offer",     "enteredLocal": "2026-09-14", "days": 25, "current": true }
+        ],
+        "totals": { "Applied": 7, "Screen": 16, "Interview": 19, "Offer": 25 },
+        "lastActivity": "2026-09-14T20:00:00Z"
+      }
+    },
+    {
+      "key": "A2", "user": "A", "company": "Northwind Labs", "role": "Full-Stack Engineer",
+      "url": "https://example.test/northwind/fullstack", "notes": "Reopened after the req came back.",
+      "applied_on": "2026-09-01", "updated_at": "2026-09-01T18:00:00Z",
+      "events": [
+        { "stage": "Applied",   "occurred_at": "2026-09-01T18:00:00Z", "note": null },
+        { "stage": "Screen",    "occurred_at": "2026-09-08T16:00:00Z", "note": null },
+        { "stage": "Closed",    "occurred_at": "2026-09-15T21:00:00Z", "note": "Req frozen" },
+        { "stage": "Screen",    "occurred_at": "2026-09-29T15:00:00Z", "note": "Req reopened" },
+        { "stage": "Interview", "occurred_at": "2026-10-06T16:00:00Z", "note": "Onsite scheduled" }
+      ],
+      "expected": {
+        "currentStage": "Interview",
+        "visits": [
+          { "stage": "Applied",   "enteredLocal": "2026-09-01", "days": 7 },
+          { "stage": "Screen",    "enteredLocal": "2026-09-08", "days": 7 },
+          { "stage": "Closed",    "enteredLocal": "2026-09-15", "days": 14 },
+          { "stage": "Screen",    "enteredLocal": "2026-09-29", "days": 7 },
+          { "stage": "Interview", "enteredLocal": "2026-10-06", "days": 3, "current": true }
+        ],
+        "totals": { "Applied": 7, "Screen": 14, "Closed": 14, "Interview": 3 },
+        "lastActivity": "2026-10-06T16:00:00Z"
+      }
+    },
+    {
+      "key": "A3", "user": "A", "company": "Globex", "role": "Software Engineer II",
+      "url": "https://example.test/globex/swe2", "notes": "Edited notes after a referral.",
+      "applied_on": "2026-09-20", "updated_at": "2026-10-08T15:00:00Z",
+      "events": [
+        { "stage": "Applied", "occurred_at": "2026-09-20T18:00:00Z", "note": null }
+      ],
+      "expected": {
+        "currentStage": "Applied",
+        "visits": [ { "stage": "Applied", "enteredLocal": "2026-09-20", "days": 19, "current": true } ],
+        "totals": { "Applied": 19 },
+        "lastActivity": "2026-10-08T15:00:00Z",
+        "lastActivitySource": "application updated_at (later than latest event)"
+      }
+    },
+    {
+      "key": "B1", "user": "B", "company": "Initech", "role": "Platform Engineer",
+      "url": "https://example.test/initech/platform", "notes": "",
+      "applied_on": "2026-09-25", "updated_at": "2026-09-25T18:00:00Z",
+      "events": [
+        { "stage": "Applied", "occurred_at": "2026-09-25T18:00:00Z", "note": null },
+        { "stage": "Screen",  "occurred_at": "2026-10-02T16:00:00Z", "note": "Hiring manager call" }
+      ],
+      "expected": {
+        "currentStage": "Screen",
+        "visits": [
+          { "stage": "Applied", "enteredLocal": "2026-09-25", "days": 7 },
+          { "stage": "Screen",  "enteredLocal": "2026-10-02", "days": 7, "current": true }
+        ],
+        "totals": { "Applied": 7, "Screen": 7 },
+        "lastActivity": "2026-10-02T16:00:00Z"
+      }
+    }
+  ],
+  "expectedListOrder": { "A": ["A3", "A2", "A1"], "B": ["B1"] },
+  "isolation": [
+    { "as": "B", "request": "GET /api/applications", "expectKeys": ["B1"] },
+    { "as": "A", "request": "GET /api/applications", "expectKeys": ["A3", "A2", "A1"] },
+    { "as": "B", "request": "GET /api/applications/:id", "ids": ["A1", "A2", "A3"], "expectStatus": 404 },
+    { "as": "B", "request": "PATCH /api/applications/:id", "ids": ["A1"], "expectStatus": 404 },
+    { "as": "B", "request": "DELETE /api/applications/:id", "ids": ["A1"], "expectStatus": 404 },
+    { "as": "B", "request": "POST /api/applications/:id/stages", "ids": ["A1"], "expectStatus": 404 },
+    { "as": "A", "request": "GET /api/applications/:id", "ids": ["B1"], "expectStatus": 404 }
+  ],
+  "stageChangeValidation": [
+    { "app": "B1", "stage": "Interview", "occurred_at": "2026-10-10T18:00:00Z", "expectStatus": 422, "reason": "future" },
+    { "app": "B1", "stage": "Interview", "occurred_at": "2026-10-01T18:00:00Z", "expectStatus": 422, "reason": "before latest event" },
+    { "app": "B1", "stage": "Screen", "expectStatus": 409, "reason": "already in stage" },
+    { "app": "B1", "stage": "Interview", "occurred_at": "2026-10-02T16:00:00Z", "expectStatus": 201, "reason": "equal to latest is allowed" }
+  ]
+}
