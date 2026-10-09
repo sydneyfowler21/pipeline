@@ -6,6 +6,7 @@ import {
   forwardRef,
   type ButtonHTMLAttributes,
   type ReactNode,
+  type Ref,
   type RefObject,
 } from 'react';
 import { cn } from '@/lib/utils';
@@ -203,7 +204,11 @@ export function Menu({
 }) {
   return (
     <DropdownMenu.Root>
-      <DropdownMenu.Trigger ref={triggerRef} className={className} aria-label={label}>
+      <DropdownMenu.Trigger
+        ref={triggerRef as Ref<HTMLButtonElement>}
+        className={className}
+        aria-label={label}
+      >
         {trigger}
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>

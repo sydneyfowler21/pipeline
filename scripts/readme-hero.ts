@@ -265,7 +265,7 @@ async function main() {
         `frame ${browserW}x${browserH} smallest ${smallest.toFixed(2)}px`,
     );
 
-    let html = frame
+    const html = frame
       .replaceAll('/*BROWSER_X*/ 80px', `${browserX}px`)
       .replaceAll('/*BROWSER_Y*/ 64px', `${browserY}px`)
       .replaceAll('/*BROWSER_W*/ 1180px', `${browserW}px`)
