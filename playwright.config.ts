@@ -29,6 +29,7 @@ export default defineConfig({
       APP_URL: baseURL,
       NODE_ENV: 'test',
       MAIL_TRANSPORT: 'memory',
+      TRUSTED_PROXY_HOPS: '0',
       PORT: String(port),
     },
   },

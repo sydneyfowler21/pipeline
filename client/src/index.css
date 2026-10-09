@@ -707,7 +707,7 @@ html[data-screenshot] .back-link {
 }
 
 html[data-screenshot] .max-w-page {
-  max-width: 620px;
+  max-width: 700px;
 }
 
 html[data-screenshot] header > div {
@@ -715,28 +715,33 @@ html[data-screenshot] header > div {
 }
 
 html[data-screenshot] main {
-  padding: 4px 16px 0;
+  padding: 10px 16px 8px;
 }
 
 html[data-screenshot] .card {
-  padding: 8px 10px;
+  padding: 12px 14px;
 }
 
 html[data-screenshot] #detail-heading {
   font-size: 20px;
-  line-height: 24px;
+  line-height: 26px;
 }
 
 html[data-screenshot] .mt-3 {
-  margin-top: 0 !important;
+  margin-top: 6px !important;
 }
 
 html[data-screenshot] .mt-4 {
-  margin-top: 4px !important;
+  margin-top: 8px !important;
 }
 
 html[data-screenshot] .mt-8 {
-  margin-top: 8px !important;
+  margin-top: 12px !important;
+}
+
+html[data-screenshot] main .mt-8.grid {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
 }
 
 html[data-screenshot] .btn {
@@ -764,7 +769,7 @@ html[data-screenshot] [aria-labelledby='history-heading'] li > div {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 2px 8px;
+  gap: 6px 8px;
 }
 
 html[data-screenshot] [aria-labelledby='history-heading'] .user-text {
@@ -776,14 +781,18 @@ html[data-screenshot] [aria-labelledby='totals-heading'] > p {
 }
 
 html[data-screenshot] ol > li + li {
-  margin-top: 2px !important;
+  margin-top: 8px !important;
 }
 
 html[data-screenshot] [aria-labelledby='history-heading'] p,
 html[data-screenshot] [aria-labelledby='totals-heading'] p {
   margin-top: 0;
   font-size: 14px !important;
-  line-height: 18px;
+  line-height: 20px;
+}
+
+html[data-screenshot] .filter-chip {
+  font-size: 14px;
 }
 
 html[data-screenshot] .text-\[12px\],

@@ -192,7 +192,7 @@ function Detail({ application }: { application: ApplicationDetail }) {
                 <li key={stage}>
                   <div className="flex items-center justify-between gap-3 text-[14px]">
                     <StageChip stage={stage} />
-                    <span className="num text-muted">
+                    <span className="num shrink-0 whitespace-nowrap text-muted">
                       {daysPhrase(days)}
                       {visits > 1 ? ` · ${visits} visits` : ''}
                     </span>

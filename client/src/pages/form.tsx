@@ -143,7 +143,11 @@ function Form({ initial }: { initial: ApplicationDetail | null }) {
           <Alert tone="error">{formError}</Alert>
         </div>
       ) : null}
-      <form onSubmit={(event) => void onSubmit(event)} className="mt-6 min-w-0 space-y-4">
+      <form
+        noValidate
+        onSubmit={(event) => void onSubmit(event)}
+        className="mt-6 min-w-0 space-y-4"
+      >
         <div className="grid min-w-0 gap-4 sm:grid-cols-2">
           <TextField
             id="company"
@@ -165,7 +169,8 @@ function Form({ initial }: { initial: ApplicationDetail | null }) {
         <TextField
           id="url"
           label="Job posting"
-          type="url"
+          type="text"
+          inputMode="url"
           value={url}
           error={errors.url}
           hint="Optional. http or https only."

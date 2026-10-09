@@ -145,6 +145,26 @@ test('long stage notes stay within the viewport', async ({ page }) => {
   }
 });
 
+test('add form validates in page and focuses the first invalid field', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Try the demo' }).click();
+  await expect(page.getByRole('heading', { name: 'Applications', exact: true })).toBeVisible();
+  await page.getByRole('link', { name: 'Add application' }).click();
+  await expect(page.getByRole('heading', { name: 'Add application' })).toBeVisible();
+  await page.getByLabel('Company').fill('Acme');
+  await page.getByLabel('Job posting').fill('notaurl');
+  await page.getByRole('button', { name: 'Add application' }).click();
+  await expect(page.getByRole('alert')).toHaveText('Fix 2 fields to save');
+  await expect(page.getByText('Enter a role (1–120 characters).')).toBeVisible();
+  await expect(page.getByText('Use an http or https link.')).toBeVisible();
+  await expect(page.getByLabel('Role')).toBeFocused();
+  const validationMessage = await page
+    .getByLabel('Job posting')
+    .evaluate((el) => (el as HTMLInputElement).validationMessage);
+  expect(validationMessage).toBe('');
+});
+
 test('creating an account leaves the demo', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/');

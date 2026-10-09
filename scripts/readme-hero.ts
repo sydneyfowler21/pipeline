@@ -3,7 +3,7 @@ import { mkdir, readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
-import { chromium, type Locator, type Page } from '@playwright/test';
+import { chromium, type Browser, type Locator, type Page } from '@playwright/test';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const port = 4174;
@@ -45,6 +45,7 @@ function startServer(): ChildProcess {
   return spawn('npm', ['run', 'start', '-w', 'server'], {
     cwd: root,
     stdio: 'inherit',
+    detached: true,
     env: {
       ...process.env,
       PORT: String(port),
@@ -56,7 +57,36 @@ function startServer(): ChildProcess {
         process.env.DATABASE_URL ?? 'postgres://pipeline:pipeline@127.0.0.1:5432/pipeline',
       SESSION_SECRET: process.env.SESSION_SECRET ?? 'test-session-secret-32-characters-min',
       ENCRYPTION_KEY: process.env.ENCRYPTION_KEY ?? 'test-encryption-key-32-characters!!',
+      TRUSTED_PROXY_HOPS: '0',
     },
+  });
+}
+
+async function stopServer(server?: ChildProcess) {
+  if (!server?.pid || server.exitCode != null) return;
+  const pid = server.pid;
+  await new Promise<void>((resolveStop) => {
+    const timer = setTimeout(() => {
+      try {
+        process.kill(-pid, 'SIGKILL');
+      } catch {
+        /* already gone */
+      }
+      resolveStop();
+    }, 2000);
+    server.once('exit', () => {
+      clearTimeout(timer);
+      resolveStop();
+    });
+    try {
+      process.kill(-pid, 'SIGTERM');
+    } catch {
+      try {
+        server.kill('SIGTERM');
+      } catch {
+        /* already gone */
+      }
+    }
   });
 }
 
@@ -140,6 +170,34 @@ async function cropText(page: Page): Promise<TextSample[]> {
   });
 }
 
+/** Visible text in the viewport. `zoom` is folded in when computed style omits it. */
+async function viewportText(page: Page): Promise<TextSample[]> {
+  return page.evaluate(() => {
+    const raw = getComputedStyle(document.documentElement).zoom;
+    const parsed = raw === 'normal' || raw === '' ? 1 : Number.parseFloat(raw);
+    const zoom = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+    const samples: TextSample[] = [];
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+    while (node) {
+      const text = node.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+      const el = node.parentElement;
+      node = walker.nextNode();
+      if (!text || !el) continue;
+      const style = getComputedStyle(el);
+      if (style.display === 'none' || style.visibility === 'hidden') continue;
+      const rect = el.getBoundingClientRect();
+      if (rect.width < 1 || rect.height < 1) continue;
+      if (rect.bottom < 0 || rect.top > window.innerHeight) continue;
+      if (rect.right < 0 || rect.left > window.innerWidth) continue;
+      const font = Number.parseFloat(style.fontSize);
+      if (!Number.isFinite(font)) continue;
+      samples.push({ font: font * zoom, text: text.slice(0, 60) });
+    }
+    return samples;
+  });
+}
+
 function assertLegible(samples: TextSample[], scale: number, label: string) {
   const short = samples
     .map((sample) => ({ ...sample, displayed: sample.font * scale * githubScale }))
@@ -161,6 +219,7 @@ async function main() {
   const remote = process.env.HERO_BASE_URL?.replace(/\/$/, '');
   const base = remote || localBase;
   let server: ChildProcess | undefined;
+  let browser: Browser | undefined;
   if (!remote) {
     await run('npm', ['run', 'build', '-w', 'client', '--', '--mode', 'test']);
     server = startServer();
@@ -171,7 +230,7 @@ async function main() {
   await mkdir(tmp, { recursive: true });
   try {
     if (!remote) await waitForHealth(base);
-    const browser = await chromium.launch();
+    browser = await chromium.launch();
     const desktop = await browser.newContext({
       locale: 'en-US',
       timezoneId: 'America/Denver',
@@ -239,9 +298,32 @@ async function main() {
     await phonePage.context().addCookies(await desktop.cookies());
     await phonePage.goto(`${base}/applications?screenshot=1`);
     await phonePage.getByRole('heading', { name: 'Applications', exact: true }).waitFor();
-    const phonePng = resolve(tmp, 'phone.png');
+    const phoneOuter = { width: 430, height: 760 };
+    const phoneInner = phoneOuter.width - 24;
+    const unzoomed = await viewportText(phonePage);
+    if (unzoomed.length === 0) throw new Error('phone capture has no text to measure');
+    const smallestFont = Math.min(...unzoomed.map((sample) => sample.font));
+    const neededZoom = 12 / (smallestFont * (phoneInner / 390) * githubScale);
+    const phoneZoom = Math.min(1.85, Math.max(1, neededZoom * 1.08));
+    await phonePage.evaluate((zoom) => {
+      document.documentElement.style.zoom = String(zoom);
+    }, phoneZoom);
     await settle(phonePage);
+    const phonePng = resolve(tmp, 'phone.png');
     await phonePage.screenshot({ path: phonePng, clip: { x: 0, y: 0, width: 390, height: 844 } });
+    const phoneSamples = await viewportText(phonePage);
+    const zoomCheck = await phonePage.evaluate(() => {
+      const el = document.querySelector('h1');
+      const font = el ? Number.parseFloat(getComputedStyle(el).fontSize) : 0;
+      return {
+        font,
+        zoom: getComputedStyle(document.documentElement).zoom,
+        rect: el?.getBoundingClientRect().height ?? 0,
+      };
+    });
+    console.log(
+      `phone zoom ${phoneZoom.toFixed(3)} inner ${phoneInner}px unzoomed smallest font ${smallestFont.toFixed(2)}px check ${JSON.stringify(zoomCheck)}`,
+    );
 
     const [shotBytes, phoneBytes, frame] = await Promise.all([
       readFile(shotPng),
@@ -250,26 +332,27 @@ async function main() {
     ]);
 
     const chrome = 40;
-    const top = 48;
-    const bottomMargin = 16;
+    const browserY = 56;
+    const bottomMargin = 20;
     const browserX = 48;
-    const phoneOuter = { width: 340, height: 690 };
     const gap = 16;
     const maxFrameW = canvas.width - browserX - gap - phoneOuter.width;
-    const maxContentH = canvas.height - top - bottomMargin - chrome;
+    const maxContentH = canvas.height - browserY - bottomMargin - chrome;
     const scale = Math.min(maxFrameW / crop.width, maxContentH / crop.height);
     const desktopW = Math.round(crop.width * scale);
     const shotH = Math.round(crop.height * scale);
     const browserW = desktopW;
     const browserH = chrome + shotH;
-    const browserY = Math.round((canvas.height - browserH) / 2);
     const phoneX = browserX + browserW + gap;
-    const phoneY = Math.round((canvas.height - phoneOuter.height) / 2);
+    const phoneY = Math.max(32, Math.round((canvas.height - phoneOuter.height) / 2));
     console.log(
-      `hero crop ${crop.width}x${crop.height} scale ${scale.toFixed(3)} frame ${browserW}x${browserH}`,
+      `hero crop ${crop.width}x${crop.height} scale ${scale.toFixed(3)} frame ${browserW}x${browserH} top ${browserY}`,
     );
     const smallest = assertLegible(samples, scale, 'desktop crop');
-    console.log(`hero smallest ${smallest.toFixed(2)}px at 880px display`);
+    const phoneSmallest = assertLegible(phoneSamples, phoneInner / 390, 'phone');
+    console.log(
+      `hero smallest desktop ${smallest.toFixed(2)}px phone ${phoneSmallest.toFixed(2)}px at 880px display`,
+    );
 
     const html = frame
       .replaceAll('/*BROWSER_X*/ 80px', `${browserX}px`)
@@ -325,9 +408,9 @@ async function main() {
       });
       await context.close();
     }
-    await browser.close();
   } finally {
-    server?.kill('SIGTERM');
+    await browser?.close();
+    await stopServer(server);
   }
 }
 
