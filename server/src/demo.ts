@@ -111,9 +111,11 @@ export function demoRoutes(deps: AppDeps) {
 
   routes.post('/demo', async (c) => {
     const now = deps.clock.now();
+    const ip = clientIp(c, deps.env.TRUSTED_PROXY_HOPS);
+    const agent = userAgent(c);
     const allowed = await consumeRateLimit(
       deps.db,
-      `demo-ip:${clientIp(c)}`,
+      `demo-ip:${ip}`,
       RATE.demoIp.max,
       RATE.demoIp.windowMs,
       now,
@@ -143,16 +145,16 @@ export function demoRoutes(deps: AppDeps) {
       createdAt: now,
       lastSeenAt: now,
       expiresAt: new Date(now.getTime() + ABSOLUTE_MS),
-      ip: clientIp(c),
-      userAgent: userAgent(c),
+      ip,
+      userAgent: agent,
       mfaPassed: false,
     });
     await deps.db.insert(authEvents).values({
       id: uuidv7(),
       userId,
       kind: AUTH_EVENT.signIn,
-      ip: clientIp(c),
-      userAgent: userAgent(c),
+      ip,
+      userAgent: agent,
       createdAt: now,
     });
 

@@ -1,6 +1,6 @@
 export const MSG = {
   signup: "If that email can be used, we've sent a link.",
-  badLogin: 'Email or password is incorrect',
+  badLogin: 'Email or password is incorrect.',
   alreadyStage: 'Already in this stage',
   futureOccurred: 'occurred_at is in the future',
   earlierOccurred: 'occurred_at is earlier than the latest stage event',

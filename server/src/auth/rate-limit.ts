@@ -5,6 +5,7 @@ import { rateLimits } from '../db/schema.js';
 export const RATE = {
   signupIp: { max: 5, windowMs: 60 * 60 * 1000 },
   loginIp: { max: 30, windowMs: 15 * 60 * 1000 },
+  loginAccountIp: { max: 30, windowMs: 15 * 60 * 1000 },
   loginAccount: { max: 10, windowMs: 15 * 60 * 1000 },
   resetIp: { max: 5, windowMs: 60 * 60 * 1000 },
   resetAccount: { max: 3, windowMs: 60 * 60 * 1000 },

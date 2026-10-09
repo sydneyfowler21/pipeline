@@ -16,6 +16,8 @@ export type Env = {
   RESEND_API_KEY?: string;
   GITHUB_CLIENT_ID?: string;
   GITHUB_CLIENT_SECRET?: string;
+  /** Reverse proxies that append to X-Forwarded-For. 0 ignores the header. Default 1 (Render). */
+  TRUSTED_PROXY_HOPS: number;
 };
 
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url));
@@ -87,6 +89,8 @@ export function loadEnv(): Env {
     throw new Error('PORT must be an integer from 1 to 65535');
   }
 
+  const trustedProxyHops = trustedHops(process.env.TRUSTED_PROXY_HOPS);
+
   const resendKey = blankToUndefined(process.env.RESEND_API_KEY);
   const encryptionKey = requireLong('ENCRYPTION_KEY', 32);
 
@@ -106,7 +110,18 @@ export function loadEnv(): Env {
     RESEND_API_KEY: resendKey,
     GITHUB_CLIENT_ID: blankToUndefined(process.env.GITHUB_CLIENT_ID),
     GITHUB_CLIENT_SECRET: blankToUndefined(process.env.GITHUB_CLIENT_SECRET),
+    TRUSTED_PROXY_HOPS: trustedProxyHops,
   };
+}
+
+/** Default 1: Render appends the client address. 0 ignores X-Forwarded-For. */
+function trustedHops(raw: string | undefined): number {
+  const value = blankToUndefined(raw);
+  if (value === undefined) return 1;
+  if (!/^\d+$/.test(value)) throw new Error('TRUSTED_PROXY_HOPS must be a non-negative integer');
+  const hops = Number(value);
+  if (hops > 32) throw new Error('TRUSTED_PROXY_HOPS must be at most 32');
+  return hops;
 }
 
 export function appOrigin(env: Env): string {

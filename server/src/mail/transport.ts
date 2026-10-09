@@ -82,6 +82,53 @@ export function resetEmail(appUrl: string, token: string): { subject: string; te
   };
 }
 
+/** Local clock time for a lockout email, e.g. `2026-10-09 12:01:00 MDT`. */
+export function formatUnlockTime(instant: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+    timeZoneName: 'short',
+  }).formatToParts(instant);
+  const read = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? '';
+  return `${read('year')}-${read('month')}-${read('day')} ${read('hour')}:${read('minute')}:${read('second')} ${read('timeZoneName')}`;
+}
+
+export function lockoutEmail(input: {
+  appUrl: string;
+  token: string;
+  unlockAt: Date;
+  timeZone: string;
+  ip: string;
+  userAgent: string | null;
+}): { subject: string; text: string } {
+  const when = formatUnlockTime(input.unlockAt, input.timeZone);
+  const device = input.userAgent ?? 'unknown';
+  return {
+    subject: 'Your account was temporarily locked',
+    text: [
+      'your account was temporarily locked',
+      '',
+      `It unlocks at ${when} (${input.timeZone}).`,
+      '',
+      'Reset your password:',
+      `${input.appUrl}/reset-password?token=${input.token}`,
+      '',
+      'This link expires in 30 minutes and works once.',
+      '',
+      `IP: ${input.ip}`,
+      `Device: ${device}`,
+      '',
+    ].join('\n'),
+  };
+}
+
 export function existingAccountEmail(appUrl: string): { subject: string; text: string } {
   return {
     subject: 'Sign in to pipeline',

@@ -1,16 +1,52 @@
+import { isIP } from 'node:net';
+import { getConnInfo } from '@hono/node-server/conninfo';
 import type { Context } from 'hono';
 import type { ZodError } from 'zod';
 import { MSG } from './messages.js';
 
-export function clientIp(c: Context): string {
-  const forwarded = c.req.header('x-forwarded-for');
-  if (forwarded) {
-    const first = forwarded.split(',')[0]?.trim();
-    if (first) return first.slice(0, 128);
+/**
+ * Client address from a trusted-proxy hop count.
+ * N means N proxies each appended the peer they saw, so the client is N from the right.
+ * Fewer entries than N, or a value that is not an IP, falls back to the socket.
+ * N = 0 ignores X-Forwarded-For (local and tests).
+ */
+export function deriveClientIp(input: {
+  forwardedFor: string | undefined;
+  remoteAddress: string | undefined;
+  trustedProxyHops: number;
+}): string {
+  const socket = normalizeIp(input.remoteAddress);
+  if (input.trustedProxyHops <= 0) return socket ?? 'unknown';
+  const parts = (input.forwardedFor ?? '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+  if (parts.length < input.trustedProxyHops) return socket ?? 'unknown';
+  const chosen = parts[parts.length - input.trustedProxyHops];
+  return normalizeIp(chosen) ?? socket ?? 'unknown';
+}
+
+function normalizeIp(value: string | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (isIP(trimmed) === 0) return null;
+  return trimmed;
+}
+
+function socketAddress(c: Context): string | undefined {
+  try {
+    return getConnInfo(c).remote.address;
+  } catch {
+    return undefined;
   }
-  const real = c.req.header('x-real-ip');
-  if (real) return real.slice(0, 128);
-  return 'unknown';
+}
+
+export function clientIp(c: Context, trustedProxyHops: number): string {
+  return deriveClientIp({
+    forwardedFor: c.req.header('x-forwarded-for'),
+    remoteAddress: socketAddress(c),
+    trustedProxyHops,
+  });
 }
 
 export function userAgent(c: Context): string | null {

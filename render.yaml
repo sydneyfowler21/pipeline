@@ -26,3 +26,5 @@ services:
         sync: false
       - key: GITHUB_CLIENT_SECRET
         sync: false
+      - key: TRUSTED_PROXY_HOPS
+        value: '1'

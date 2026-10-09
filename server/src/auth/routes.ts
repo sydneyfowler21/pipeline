@@ -32,7 +32,7 @@ import {
   sessionCookie,
   userAgent,
 } from '../http.js';
-import { existingAccountEmail, resetEmail, verifyEmail } from '../mail/transport.js';
+import { existingAccountEmail, lockoutEmail, resetEmail, verifyEmail } from '../mail/transport.js';
 import { MSG } from '../messages.js';
 import { dummyPasswordHash, hashPassword, verifyPassword } from './password.js';
 import {
@@ -85,6 +85,36 @@ async function issueToken(
   return token;
 }
 
+async function notifyLockout(
+  deps: AppDeps,
+  user: { id: string; email: string; timeZone: string },
+  lockedUntil: Date,
+  ip: string,
+  agent: string | null,
+  now: Date,
+) {
+  await deps.db
+    .update(authTokens)
+    .set({ usedAt: now })
+    .where(
+      and(
+        eq(authTokens.userId, user.id),
+        eq(authTokens.kind, 'reset_password'),
+        isNull(authTokens.usedAt),
+      ),
+    );
+  const token = await issueToken(deps, user.id, 'reset_password', now, RESET_TTL_MS);
+  const mail = lockoutEmail({
+    appUrl: deps.env.APP_URL,
+    token,
+    unlockAt: lockedUntil,
+    timeZone: user.timeZone,
+    ip,
+    userAgent: agent,
+  });
+  await sendQuietly(deps, { to: user.email, ...mail });
+}
+
 async function openSession(
   deps: AppDeps,
   userId: string,
@@ -124,7 +154,7 @@ export function authRoutes(deps: AppDeps) {
     if (!parsed.success) return c.json(invalidInput(parsed.error), 400);
 
     const now = deps.clock.now();
-    const ip = clientIp(c);
+    const ip = clientIp(c, deps.env.TRUSTED_PROXY_HOPS);
     const allowed = await consumeRateLimit(
       deps.db,
       `signup-ip:${ip}`,
@@ -174,9 +204,10 @@ export function authRoutes(deps: AppDeps) {
     if (!parsed.success) return c.json(invalidInput(parsed.error), 400);
 
     const now = deps.clock.now();
-    const ip = clientIp(c);
+    const ip = clientIp(c, deps.env.TRUSTED_PROXY_HOPS);
     const agent = userAgent(c);
     const email = normalizeEmail(parsed.data.email);
+    const emailHash = sha256(email);
 
     const ipAllowed = await consumeRateLimit(
       deps.db,
@@ -185,33 +216,33 @@ export function authRoutes(deps: AppDeps) {
       RATE.loginIp.windowMs,
       now,
     );
-    if (!ipAllowed) return c.json({ error: MSG.rateLimited }, 429);
-
-    const user = await findUserByEmail(deps.db, email);
-    const accountAllowed = await consumeRateLimit(
+    const accountIpAllowed = await consumeRateLimit(
       deps.db,
-      `login-acct:${sha256(email)}`,
-      RATE.loginAccount.max,
-      RATE.loginAccount.windowMs,
+      `login-acct-ip:${emailHash}:${ip}`,
+      RATE.loginAccountIp.max,
+      RATE.loginAccountIp.windowMs,
       now,
     );
-    if (!accountAllowed) {
-      await audit(deps, {
-        userId: user?.id ?? null,
-        kind: AUTH_EVENT.signInFailure,
-        ip,
-        userAgent: agent,
-        now,
-      });
-      return c.json({ error: MSG.badLogin }, 401);
-    }
+    if (!ipAllowed || !accountIpAllowed) return c.json({ error: MSG.rateLimited }, 429);
 
+    const user = await findUserByEmail(deps.db, email);
     const lock = user ? await loginLock(deps.db, user.id) : { count: 0, lockedUntil: null };
     const locked = lock.lockedUntil != null && lock.lockedUntil.getTime() > now.getTime();
     const passwordHash = user?.passwordHash ?? (await dummyPasswordHash());
     const passwordOk = await verifyPassword(passwordHash, parsed.data.password);
-    if (!user || !passwordOk || locked) {
-      if (user && !locked) await recordLoginFailure(deps.db, user.id, now);
+    const accountAllowed = await consumeRateLimit(
+      deps.db,
+      `login-acct:${emailHash}`,
+      RATE.loginAccount.max,
+      RATE.loginAccount.windowMs,
+      now,
+    );
+    if (!accountAllowed || !user || !passwordOk || locked) {
+      if (accountAllowed && user && !locked && !passwordOk) {
+        const failure = await recordLoginFailure(deps.db, user.id, now);
+        if (failure.lockedUntil)
+          await notifyLockout(deps, user, failure.lockedUntil, ip, agent, now);
+      }
       await audit(deps, {
         userId: user?.id ?? null,
         kind: AUTH_EVENT.signInFailure,
@@ -238,7 +269,7 @@ export function authRoutes(deps: AppDeps) {
     await audit(deps, {
       userId: user.id,
       kind: AUTH_EVENT.signOut,
-      ip: clientIp(c),
+      ip: clientIp(c, deps.env.TRUSTED_PROXY_HOPS),
       userAgent: userAgent(c),
       now,
     });
@@ -254,7 +285,7 @@ export function authRoutes(deps: AppDeps) {
     await audit(deps, {
       userId: user.id,
       kind: AUTH_EVENT.signOutAll,
-      ip: clientIp(c),
+      ip: clientIp(c, deps.env.TRUSTED_PROXY_HOPS),
       userAgent: userAgent(c),
       now,
     });
@@ -275,7 +306,7 @@ export function authRoutes(deps: AppDeps) {
       await audit(deps, {
         userId: user.id,
         kind: AUTH_EVENT.emailVerified,
-        ip: clientIp(c),
+        ip: clientIp(c, deps.env.TRUSTED_PROXY_HOPS),
         userAgent: userAgent(c),
         now,
       });
@@ -287,7 +318,7 @@ export function authRoutes(deps: AppDeps) {
     const parsed = requestResetSchema.safeParse(await readJson(c));
     if (!parsed.success) return c.json(invalidInput(parsed.error), 400);
     const now = deps.clock.now();
-    const ip = clientIp(c);
+    const ip = clientIp(c, deps.env.TRUSTED_PROXY_HOPS);
     const email = normalizeEmail(parsed.data.email);
     const ipAllowed = await consumeRateLimit(
       deps.db,
@@ -346,7 +377,7 @@ export function authRoutes(deps: AppDeps) {
     await audit(deps, {
       userId: user.id,
       kind: AUTH_EVENT.passwordReset,
-      ip: clientIp(c),
+      ip: clientIp(c, deps.env.TRUSTED_PROXY_HOPS),
       userAgent: userAgent(c),
       now,
     });
@@ -370,11 +401,17 @@ export function authRoutes(deps: AppDeps) {
     const passwordHash = await hashPassword(parsed.data.newPassword);
     await deps.db.update(users).set({ passwordHash }).where(eq(users.id, user.id));
     await deps.db.delete(sessions).where(eq(sessions.userId, user.id));
-    const token = await openSession(deps, user.id, clientIp(c), userAgent(c), now);
+    const token = await openSession(
+      deps,
+      user.id,
+      clientIp(c, deps.env.TRUSTED_PROXY_HOPS),
+      userAgent(c),
+      now,
+    );
     await audit(deps, {
       userId: user.id,
       kind: AUTH_EVENT.passwordChange,
-      ip: clientIp(c),
+      ip: clientIp(c, deps.env.TRUSTED_PROXY_HOPS),
       userAgent: userAgent(c),
       now,
     });

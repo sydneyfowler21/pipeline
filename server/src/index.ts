@@ -1,5 +1,6 @@
 import { serve } from '@hono/node-server';
 import { passwordBreachStatus } from './auth/hibp.js';
+import { dummyPasswordHash } from './auth/password.js';
 import { createApp } from './app.js';
 import { systemClock } from './clock.js';
 import { createDb } from './db/client.js';
@@ -9,6 +10,7 @@ import { loadEnv } from './env.js';
 import { createMailTransport } from './mail/transport.js';
 
 const env = loadEnv();
+await dummyPasswordHash();
 await runMigrations(env.DATABASE_URL);
 const { db, sql } = createDb(env.DATABASE_URL);
 const app = createApp({

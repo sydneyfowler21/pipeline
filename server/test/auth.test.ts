@@ -4,6 +4,7 @@ import { consumeRateLimit, lockoutSeconds } from '../src/auth/rate-limit.js';
 import { sessions, users } from '../src/db/schema.js';
 import { deleteExpiredDemoUsers } from '../src/demo.js';
 import { resolveMailTransport } from '../src/env.js';
+import { formatUnlockTime } from '../src/mail/transport.js';
 import type { HibpResult } from '../src/auth/hibp.js';
 import { MSG } from '../src/messages.js';
 import {
@@ -276,6 +277,80 @@ describe('auth', () => {
     expect((await api(app, jar, '/api/auth/me')).status).toBe(401);
   });
 
+  it('returns one identical 401 for a lock, a wrong password, and an unknown email', async () => {
+    const owner = new CookieJar();
+    await signup(owner, email);
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      expect((await login(app, owner, email, 'wrong-password-value')).status).toBe(401);
+    }
+    const locked = await login(app, owner, email, password);
+
+    const other = new CookieJar();
+    await signup(other, 'blair@example.test');
+    const wrong = await login(app, other, 'blair@example.test', 'wrong-password-value');
+    const missing = await login(app, new CookieJar(), 'missing@example.test', password);
+
+    const lockedSig = await responseSignature(locked);
+    const wrongSig = await responseSignature(wrong);
+    const missingSig = await responseSignature(missing);
+    expect(wrongSig).toEqual(lockedSig);
+    expect(missingSig).toEqual(lockedSig);
+    expect(lockedSig.status).toBe(401);
+    expect(JSON.parse(lockedSig.body)).toEqual({ error: MSG.badLogin });
+    expect(lockedSig.body).not.toContain('retryAfter');
+    expect(MSG.badLogin).toBe('Email or password is incorrect.');
+  });
+
+  it('emails the owner once per lockout and never for an unknown email', async () => {
+    const jar = new CookieJar();
+    await signup(jar, email);
+    mail.clear();
+
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const response = await api(app, jar, '/api/auth/login', {
+        method: 'POST',
+        body: { email: 'missing@example.test', password },
+        userAgent: 'QA-Device/9',
+        forwardedFor: '203.0.113.99',
+        remoteAddress: jar.ip,
+      });
+      expect(response.status).toBe(401);
+    }
+    expect(mail.messages).toHaveLength(0);
+
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      expect((await failFrom(jar, 'wrong-password-value')).status).toBe(401);
+    }
+    expect(mail.messages).toHaveLength(0);
+
+    expect((await failFrom(jar, 'wrong-password-value')).status).toBe(401);
+    expect(mail.messages).toHaveLength(1);
+    const unlockAt = new Date('2026-10-09T18:01:00.000Z');
+    expect(mail.messages[0]).toMatchObject({
+      to: email,
+      subject: 'Your account was temporarily locked',
+    });
+    expect(mail.messages[0]?.text).toContain('your account was temporarily locked');
+    expect(mail.messages[0]?.text).toContain(formatUnlockTime(unlockAt, 'America/Denver'));
+    expect(mail.messages[0]?.text).toContain('/reset-password?token=');
+    expect(mail.messages[0]?.text).toContain(`IP: ${jar.ip}`);
+    expect(mail.messages[0]?.text).toContain('Device: QA-Device/9');
+    expect(mail.messages[0]?.text).not.toContain('203.0.113.99');
+
+    expect((await failFrom(jar, password)).status).toBe(401);
+    expect((await failFrom(jar, 'wrong-password-value')).status).toBe(401);
+    expect(mail.messages).toHaveLength(1);
+
+    clock.set(new Date(clock.now().getTime() + 61_000));
+    expect((await failFrom(jar, 'wrong-password-value')).status).toBe(401);
+    expect(mail.messages).toHaveLength(2);
+    expect(mail.messages[1]?.text).toContain(
+      formatUnlockTime(new Date(clock.now().getTime() + 120_000), 'America/Denver'),
+    );
+    expect((await failFrom(jar, 'wrong-password-value')).status).toBe(401);
+    expect(mail.messages).toHaveLength(2);
+  });
+
   it('locks the account after 5 failures and doubles the next lock', async () => {
     const jar = new CookieJar();
     await signup(jar, email);
@@ -393,6 +468,16 @@ describe('auth', () => {
     expect(people.map((person) => person.email)).toEqual(['blair@example.test']);
   });
 
+  async function failFrom(jar: CookieJar, secret: string) {
+    return api(app, jar, '/api/auth/login', {
+      method: 'POST',
+      body: { email, password: secret },
+      userAgent: 'QA-Device/9',
+      forwardedFor: '203.0.113.99',
+      remoteAddress: jar.ip,
+    });
+  }
+
   async function signup(jar: CookieJar, address: string) {
     await withCsrf(app, jar);
     return api(app, jar, '/api/auth/signup', {
@@ -401,3 +486,12 @@ describe('auth', () => {
     });
   }
 });
+
+async function responseSignature(response: Response) {
+  const headers = [...response.headers.entries()]
+    .map(([name, value]) => [name.toLowerCase(), value] as const)
+    .sort((a, b) => (a[0] === b[0] ? a[1].localeCompare(b[1]) : a[0].localeCompare(b[0])));
+  const setCookie =
+    typeof response.headers.getSetCookie === 'function' ? response.headers.getSetCookie() : [];
+  return { status: response.status, body: await response.text(), headers, setCookie };
+}

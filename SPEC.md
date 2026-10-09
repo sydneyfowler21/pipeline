@@ -89,13 +89,29 @@ There is **no status column**. Current stage = stage of the latest `stage_events
 - **Sign in with GitHub (slice 2)**: OAuth with state + PKCE; links to an existing account only when
   GitHub returns a verified primary email matching a verified local email.
 - **Abuse**: rate limits per IP and per account on login, sign-up, reset request, and 2FA.
+  Login is also limited per account plus trusted IP. The per-account login limit does not include
+  the IP, so a new address does not refresh that budget.
   Progressive lockout on login: 5 failures → 1 min, then doubling to a 1-hour cap.
-- **No user enumeration**: login says "Email or password is incorrect"; reset and sign-up always say
+  Lockout responses are deliberately generic for no-enumeration. A locked account, a wrong password,
+  and an unknown email are the same 401, with body "Email or password is incorrect." and no
+  `retryAfterSeconds`. Unknown emails still run argon2id against a dummy hash so the timing stays
+  comparable. When a lock starts, email the owner once: not again on later attempts during that
+  lock, and again only when a new lock starts. The mail says the account was temporarily locked,
+  the unlock time in the user's time zone, a reset-password link, and the IP and device from the
+  trusted-hop client address. Unknown emails get no mail.
+  The sign-in screen (the client, not this API) may, after a few failed attempts, show one hint
+  that is identical for every email: "Having trouble? Reset your password, or check your email."
+- **No user enumeration**: login says "Email or password is incorrect."; reset and sign-up always say
   "If that email can be used, we've sent a link."
 - **Audit log**: sign-in, sign-in failure, sign-out, sign-out-all, password reset, email verified,
   2FA enabled/disabled, recovery code used. Users see their last 50 in Settings.
 
 ## Platform security
+- **Client IP**: `TRUSTED_PROXY_HOPS` (default 1, Render's one proxy). The client address is that
+  many entries from the right of `X-Forwarded-For`, because each trusted proxy appends the peer it
+  saw. If the header has fewer entries, or the chosen value is not an IP, use the socket address.
+  `0` ignores `X-Forwarded-For` and uses the socket (local development and tests). Rate limits,
+  sessions, `auth_events`, and demo seeding all use this one helper. Do not trust the leftmost hop.
 - Headers: strict CSP (`default-src 'self'`; no inline script), HSTS, X-Content-Type-Options,
   Referrer-Policy strict-origin-when-cross-origin, frame-ancestors 'none'.
 - Every query is scoped by `user_id` server-side. Another user's id returns **404**, never 403.
