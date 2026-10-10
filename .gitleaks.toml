@@ -1,0 +1,13 @@
+title = "pipeline gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Fictional fixture passwords and placeholder env names"
+paths = [
+  '''fixtures/slice-1\.json''',
+  '''\.env\.example''',
+  '''\.github/workflows/ci\.yml''',
+  '''server/test/.*''',
+]

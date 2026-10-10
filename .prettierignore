@@ -1,0 +1,9 @@
+SPEC.md
+docs/plans/slice-1.md
+fixtures/slice-1.json
+package-lock.json
+dist
+node_modules
+playwright-report
+test-results
+coverage

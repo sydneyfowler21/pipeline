@@ -42,8 +42,10 @@ There is **no status column**. Current stage = stage of the latest `stage_events
 2. Any stage may move to any other stage, including earlier ones (a revisit). Closed can reopen.
    Moving to the current stage is rejected (409, "Already in this stage").
 3. Stage changes always append. Events are never edited or deleted; a correction is a new event.
-4. Creating an application writes an `Applied` event with occurred_at = applied_on at 12:00 in the
-   user's time zone, in the same transaction.
+4. Creating an application writes an `Applied` event in the same transaction. occurred_at is
+   00:00 in the user's time zone on applied_on, except when applied_on is today in that time zone,
+   in which case occurred_at is the application's created_at. A stage move immediately afterward,
+   using the default of now, is therefore not earlier than the Applied event.
 5. A stage change takes optional `occurred_at`: default now; rejected if in the future;
    rejected if earlier than the latest existing event (equal is allowed).
 6. DB enforcement: a trigger rejects UPDATE on `stage_events`, and rejects DELETE unless the parent
@@ -78,7 +80,11 @@ There is **no status column**. Current stage = stage of the latest `stage_events
   if HIBP is down).
 - **Email verification** on sign-up. Unverified users can sign in but can't create applications.
 - **Password reset** by email: 32-byte random token, stored as SHA-256 hash, single use, 30-minute
-  expiry. Reset revokes all sessions.
+  expiry. Reset revokes all sessions. Any password change (reset completion or a signed-in password
+  change, including `POST /api/me/password`) expires every outstanding reset token, and any
+  email-change token if that kind exists, in the same transaction as the password update and the
+  session revoke. A token from before that change is rejected on both `GET` and `POST
+  /api/auth/reset-password` with the same generic invalid response as a missing token.
 - **Sessions**: server-side in Postgres; cookie `__Host-sid`, httpOnly, Secure, SameSite=Lax, Path=/.
   Idle timeout 7 days, absolute 30 days. Rotate session id on login, password change, 2FA change.
   "Sign out of all devices" deletes every session for the user. Session list shown in Settings.
@@ -87,17 +93,44 @@ There is **no status column**. Current stage = stage of the latest `stage_events
 - **Sign in with GitHub (slice 2)**: OAuth with state + PKCE; links to an existing account only when
   GitHub returns a verified primary email matching a verified local email.
 - **Abuse**: rate limits per IP and per account on login, sign-up, reset request, and 2FA.
+  Login is also limited per account plus trusted IP. The per-account login limit does not include
+  the IP, so a new address does not refresh that budget.
+  `GET /api/auth/reset-password` uses the same limiter and the same 429 body as the other auth
+  routes: trusted IP (30 per 15 minutes), plus a token-hash prefix (10 per 15 minutes) and a global
+  cap (100 per hour). Over the limit the body is `{"error":"Too many requests"}` for every token.
+  A missing, used, expired, or revoked token is 400 `{"error":"Invalid or expired token"}` on both
+  GET and POST.
   Progressive lockout on login: 5 failures → 1 min, then doubling to a 1-hour cap.
-- **No user enumeration**: login says "Email or password is incorrect"; reset and sign-up always say
+  Lockout responses are deliberately generic for no-enumeration. A locked account, a wrong password,
+  and an unknown email are the same 401, with body "Email or password is incorrect." and no
+  `retryAfterSeconds`. Unknown emails still run argon2id against a dummy hash so the timing stays
+  comparable. When a lock starts, email the owner once: not again on later attempts during that
+  lock, and again only when a new lock starts. The mail says the account was temporarily locked,
+  the unlock time in the user's time zone, a reset-password link, and the IP and device from the
+  trusted-hop client address. Unknown emails get no mail.
+  The sign-in screen (the client, not this API) may, after a few failed attempts, show one hint
+  that is identical for every email: "Having trouble? Reset your password, or check your email."
+- **No user enumeration**: login says "Email or password is incorrect."; reset and sign-up always say
   "If that email can be used, we've sent a link."
 - **Audit log**: sign-in, sign-in failure, sign-out, sign-out-all, password reset, email verified,
   2FA enabled/disabled, recovery code used. Users see their last 50 in Settings.
 
 ## Platform security
+- **Client IP**: `TRUSTED_PROXY_HOPS` entries from the right of `X-Forwarded-For`, because each
+  trusted proxy appends the peer it saw. `0` ignores the header and uses the socket address. Unset
+  defaults to `0`. Set `1` on Render, correct only because Render's proxy is the sole route to the
+  app. A wrong hop count reopens IP spoofing. Invalid or negative values fail startup. If the header
+  has fewer entries, or the chosen value is not an IP, use the socket address. Rate limits, sessions,
+  `auth_events`, and demo seeding all use this one helper. Do not trust the leftmost hop.
 - Headers: strict CSP (`default-src 'self'`; no inline script), HSTS, X-Content-Type-Options,
-  Referrer-Policy strict-origin-when-cross-origin, frame-ancestors 'none'.
+  Referrer-Policy strict-origin-when-cross-origin, frame-ancestors 'none'. Permissions-Policy denies
+  unused features. Cross-Origin-Opener-Policy and Cross-Origin-Resource-Policy are `same-origin`.
+  `Cache-Control: no-store` on every `/api/auth` response and every `/api/me` response.
 - Every query is scoped by `user_id` server-side. Another user's id returns **404**, never 403.
 - Request body limit 64 KB. All inputs validated with zod. No secrets or tokens in logs.
+- **Validation status**: 400 is schema or shape validation (zod, including unknown fields rejected
+  by `.strict()`). 422 is a domain rule that the shape already passed (a future date, an earlier
+  stage event, a breached password, or `applied_on` cannot be changed).
 
 ## Demo
 - Open sign-up, plus a **Try the demo** button: creates a throwaway verified user (`is_demo`),
