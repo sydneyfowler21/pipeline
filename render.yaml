@@ -1,27 +1,34 @@
-# One Render web service. Postgres is external Neon via DATABASE_URL.
-# Do not add a Render database.
+# One Render web service. Postgres is external Neon. Do not add a Render database.
+# Migrations run on server start, before listen. There is no preDeployCommand.
 services:
   - type: web
     name: pipeline
     runtime: node
-    buildCommand: npm ci && npm run build
+    # Render sets NODE_ENV=production, and plain `npm ci` then skips the client build tools.
+    # tsx stays installed: it is a production dependency, and `npm start` runs the server with it.
+    buildCommand: npm ci --include=dev && npm run build && npm prune --omit=dev
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:
       - key: NODE_VERSION
         value: '22'
+      # Neon pooled URL (hostname contains -pooler). The owner sets this.
+      # Migrations also accept optional DATABASE_URL_UNPOOLED or DIRECT_URL (direct host, no -pooler).
       - key: DATABASE_URL
         sync: false
+      # generateValue is base64 of 32 bytes (44 characters). That meets the 32-character minimum.
+      # SESSION_SECRET is used as the HMAC string. ENCRYPTION_KEY decodes to 32 raw AES-256 bytes.
       - key: SESSION_SECRET
-        sync: false
+        generateValue: true
       - key: ENCRYPTION_KEY
-        sync: false
+        generateValue: true
       - key: APP_URL
         sync: false
       - key: RESEND_API_KEY
         sync: false
       - key: MAIL_FROM
-        sync: false
+        value: 'Pipeline <onboarding@resend.dev>'
+      # Optional. Slice 2 GitHub OAuth. Blank is fine; the server starts without them.
       - key: GITHUB_CLIENT_ID
         sync: false
       - key: GITHUB_CLIENT_SECRET

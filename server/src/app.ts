@@ -24,15 +24,7 @@ export function createApp(deps: AppDeps) {
   app.use('*', securityHeaders());
   app.use('*', async (c, next) => {
     await next();
-    const path = c.req.path;
-    if (
-      path === '/api/auth' ||
-      path.startsWith('/api/auth/') ||
-      path === '/api/me' ||
-      path.startsWith('/api/me/')
-    ) {
-      c.res.headers.set('Cache-Control', 'no-store');
-    }
+    if (noStorePath(c.req.path)) c.res.headers.set('Cache-Control', 'no-store');
   });
   app.use(
     '*',
@@ -107,6 +99,17 @@ export function createApp(deps: AppDeps) {
   });
 
   return app;
+}
+
+function noStorePath(path: string): boolean {
+  return (
+    path === '/api/auth' ||
+    path.startsWith('/api/auth/') ||
+    path === '/api/me' ||
+    path.startsWith('/api/me/') ||
+    path === '/api/sessions' ||
+    path.startsWith('/api/sessions/')
+  );
 }
 
 function mountClient(app: Hono<AppEnv>) {

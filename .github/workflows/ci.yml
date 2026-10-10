@@ -97,3 +97,154 @@ jobs:
           name: screen-screenshots
           path: e2e-screenshots
           if-no-files-found: ignore
+
+  deploy-smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # Public ECR mirror of the official image. Anonymous Docker Hub pulls are rate limited.
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: pipeline
+          POSTGRES_PASSWORD: pipeline
+          POSTGRES_DB: pipeline
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pipeline -d pipeline"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://pipeline:pipeline@localhost:5432/pipeline
+      APP_URL: http://127.0.0.1:3000
+      PORT: '3000'
+      NODE_ENV: production
+      TRUSTED_PROXY_HOPS: '1'
+      MAIL_FROM: 'Pipeline <onboarding@resend.dev>'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Generate placeholder secrets
+        run: |
+          set -euo pipefail
+          session="$(openssl rand -base64 32)"
+          encryption="$(openssl rand -base64 32)"
+          echo "::add-mask::$session"
+          echo "::add-mask::$encryption"
+          echo "SESSION_SECRET=$session" >> "$GITHUB_ENV"
+          echo "ENCRYPTION_KEY=$encryption" >> "$GITHUB_ENV"
+          # Dummy key. The smoke requests never send mail.
+          echo "RESEND_API_KEY=re_ci_dummy_not_sent" >> "$GITHUB_ENV"
+      - name: Clean install
+        run: npm ci
+      - name: Render buildCommand
+        run: |
+          set -euo pipefail
+          build="$(node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const yaml = readFileSync("render.yaml", "utf8");
+            const match = yaml.match(/^    buildCommand:\s*(.+)\s*$/m);
+            if (!match) throw new Error("render.yaml is missing buildCommand");
+            process.stdout.write(match[1].trim());
+          ')"
+          echo "buildCommand: $build"
+          bash -c "$build"
+      - name: Serve, then migrate again
+        run: |
+          set -euo pipefail
+          start="$(node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const yaml = readFileSync("render.yaml", "utf8");
+            const match = yaml.match(/^    startCommand:\s*(.+)\s*$/m);
+            if (!match) throw new Error("render.yaml is missing startCommand");
+            process.stdout.write(match[1].trim());
+          ')"
+          echo "startCommand: $start"
+
+          start_server() {
+            local log="$1"
+            setsid bash -c "$start" >"$log" 2>&1 &
+            echo $! > /tmp/pipeline.pid
+          }
+          stop_server() {
+            local pid
+            pid="$(cat /tmp/pipeline.pid)"
+            kill -TERM -"$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
+            for _ in $(seq 1 40); do
+              if ! kill -0 "$pid" 2>/dev/null; then
+                return 0
+              fi
+              sleep 0.25
+            done
+            echo "server did not exit" >&2
+            return 1
+          }
+          wait_for_health() {
+            local log="$1"
+            for _ in $(seq 1 90); do
+              if curl -fsS http://127.0.0.1:3000/api/health -o /tmp/health.json; then
+                grep -q '"ok":true' /tmp/health.json
+                return 0
+              fi
+              if ! kill -0 "$(cat /tmp/pipeline.pid)" 2>/dev/null; then
+                echo "server exited before health" >&2
+                cat "$log" >&2
+                return 1
+              fi
+              sleep 1
+            done
+            echo "timed out waiting for /api/health" >&2
+            cat "$log" >&2
+            return 1
+          }
+          migration_count() {
+            node --input-type=module -e '
+              import postgres from "postgres";
+              const sql = postgres(process.env.DATABASE_URL, { prepare: false, max: 1 });
+              const rows = await sql`select count(*)::int as n from drizzle.__drizzle_migrations`;
+              process.stdout.write(String(rows[0].n));
+              await sql.end({ timeout: 5 });
+            '
+          }
+
+          start_server /tmp/pipeline-first.log
+          wait_for_health /tmp/pipeline-first.log
+          first_count="$(migration_count)"
+          test "$first_count" -ge 1
+
+          curl -fsS -D /tmp/root.headers http://127.0.0.1:3000/ -o /tmp/root.html
+          grep -q 'id="root"' /tmp/root.html
+          grep -qi 'content-security-policy' /tmp/root.headers
+          grep -q "default-src 'self'" /tmp/root.headers
+          asset="$(grep -oE '/assets/[^"]+\.js' /tmp/root.html | head -1)"
+          test -n "$asset"
+          curl -fsS -D /tmp/asset.headers "http://127.0.0.1:3000${asset}" -o /tmp/asset.js
+          grep -qi 'content-security-policy' /tmp/asset.headers
+          grep -qi 'javascript' /tmp/asset.headers
+          curl -fsS http://127.0.0.1:3000/settings -o /tmp/spa.html
+          grep -q 'id="root"' /tmp/spa.html
+          code="$(curl -s -o /tmp/miss.json -w '%{http_code}' http://127.0.0.1:3000/api/not-a-route)"
+          test "$code" = "404"
+          grep -q '"error"' /tmp/miss.json
+          if grep -q '<html' /tmp/miss.json; then
+            echo "SPA fallback shadowed /api" >&2
+            exit 1
+          fi
+
+          stop_server
+          for _ in $(seq 1 40); do
+            if ! curl -fsS http://127.0.0.1:3000/api/health >/dev/null 2>&1; then
+              break
+            fi
+            sleep 0.25
+          done
+          start_server /tmp/pipeline-second.log
+          wait_for_health /tmp/pipeline-second.log
+          second_count="$(migration_count)"
+          test "$second_count" = "$first_count"
+          grep -q 'migrations applied' /tmp/pipeline-second.log
+          stop_server

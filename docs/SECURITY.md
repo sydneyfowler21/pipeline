@@ -28,7 +28,7 @@ Setting a password expires outstanding credential tokens in the same transaction
 
 ## Response headers
 
-Every response sends a Permissions-Policy that denies unused browser features, `Cross-Origin-Opener-Policy: same-origin`, and `Cross-Origin-Resource-Policy: same-origin`, along with the existing CSP, HSTS, nosniff, referrer, and frame denial. `Cache-Control: no-store` is set on every `/api/auth` response and every `/api/me` response.
+Every response sends a Permissions-Policy that denies unused browser features, `Cross-Origin-Opener-Policy: same-origin`, and `Cross-Origin-Resource-Policy: same-origin`, along with the existing CSP, HSTS, nosniff, referrer, and frame denial. `Cache-Control: no-store` is set on every `/api/auth` response, every `/api/me` response, and the session alias under `/api/sessions`.
 
 ## Validation status
 

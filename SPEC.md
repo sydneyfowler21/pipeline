@@ -147,7 +147,9 @@ There is **no status column**. Current stage = stage of the latest `stage_events
 - Headers: strict CSP (`default-src 'self'`; no inline script), HSTS, X-Content-Type-Options,
   Referrer-Policy strict-origin-when-cross-origin, frame-ancestors 'none'. Permissions-Policy denies
   unused features. Cross-Origin-Opener-Policy and Cross-Origin-Resource-Policy are `same-origin`.
-  `Cache-Control: no-store` on every `/api/auth` response and every `/api/me` response.
+  `Cache-Control: no-store` on every `/api/auth` response, every `/api/me` response, and the
+  session alias under `/api/sessions` (`GET /api/sessions`, `DELETE /api/sessions/:id`,
+  `POST /api/sessions/revoke-all`).
 - Every query is scoped by `user_id` server-side. Another user's id returns **404**, never 403.
 - Request body limit 64 KB. All inputs validated with zod. No secrets or tokens in logs.
 - **Validation status**: 400 is schema or shape validation (zod, including unknown fields rejected

@@ -99,6 +99,9 @@ describe('auth', () => {
     const anon = await api(app, new CookieJar(), '/api/auth/me');
     expect(anon.status).toBe(401);
     expect(anon.headers.get('cache-control')).toBe('no-store');
+    const anonSessions = await api(app, new CookieJar(), '/api/sessions');
+    expect(anonSessions.status).toBe(401);
+    expect(anonSessions.headers.get('cache-control')).toBe('no-store');
 
     await signup(jar, email);
     const token = tokenFrom(mail, 'Verify');
@@ -117,6 +120,9 @@ describe('auth', () => {
 
     const me = await api(app, jar, '/api/auth/me');
     expect(me.headers.get('cache-control')).toBe('no-store');
+    const sessionsAlias = await api(app, jar, '/api/sessions');
+    expect(sessionsAlias.status).toBe(200);
+    expect(sessionsAlias.headers.get('cache-control')).toBe('no-store');
     const listed = await api(app, jar, '/api/applications');
     expect(listed.headers.get('cache-control')).not.toBe('no-store');
 
