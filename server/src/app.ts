@@ -14,7 +14,8 @@ import type { AppDeps, AppEnv } from './deps.js';
 import { appOrigin } from './env.js';
 import { CSRF_COOKIE, SESSION_COOKIE, readCookie } from './http.js';
 import { MSG } from './messages.js';
-import { authRoutes, meRoutes } from './auth/routes.js';
+import { accountAliasRoutes, authRoutes, meRoutes } from './auth/routes.js';
+import { MemoryMailTransport } from './mail/transport.js';
 import { securityHeaders } from './security.js';
 
 export function createApp(deps: AppDeps) {
@@ -85,8 +86,13 @@ export function createApp(deps: AppDeps) {
   });
 
   app.get('/api/health', (c) => c.json({ ok: true }));
+  if (deps.env.NODE_ENV === 'test' && deps.mail instanceof MemoryMailTransport) {
+    const mail = deps.mail;
+    app.get('/api/test/mailbox', (c) => c.json({ messages: mail.messages }));
+  }
   app.route('/api/auth', authRoutes(deps));
   app.route('/api', meRoutes(deps));
+  app.route('/api', accountAliasRoutes(deps));
   app.route('/api', demoRoutes(deps));
   app.route('/api/applications', applicationRoutes(deps));
   mountClient(app);

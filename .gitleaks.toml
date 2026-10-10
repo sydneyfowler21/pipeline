@@ -10,4 +10,5 @@ paths = [
   '''\.env\.example''',
   '''\.github/workflows/ci\.yml''',
   '''server/test/.*''',
+  '''e2e/.*''',
 ]

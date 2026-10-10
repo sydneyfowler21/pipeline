@@ -2,7 +2,7 @@ import { serve } from '@hono/node-server';
 import { passwordBreachStatus } from './auth/hibp.js';
 import { dummyPasswordHash } from './auth/password.js';
 import { createApp } from './app.js';
-import { systemClock } from './clock.js';
+import { createClock, systemClock } from './clock.js';
 import { createDb } from './db/client.js';
 import { runMigrations } from './db/migrate.js';
 import { deleteExpiredDemoUsers } from './demo.js';
@@ -13,10 +13,15 @@ const env = loadEnv();
 await dummyPasswordHash();
 await runMigrations(env.DATABASE_URL);
 const { db, sql } = createDb(env.DATABASE_URL);
+const fixedNow = process.env.APP_NOW?.trim();
+const clock =
+  env.NODE_ENV !== 'production' && fixedNow && !Number.isNaN(new Date(fixedNow).getTime())
+    ? createClock(new Date(fixedNow))
+    : systemClock;
 const app = createApp({
   db,
   mail: createMailTransport(env),
-  clock: systemClock,
+  clock,
   env,
   hibp: (password) => passwordBreachStatus(password),
 });

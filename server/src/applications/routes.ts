@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { and, desc, eq } from 'drizzle-orm';
-import { appliedOccurredAt, localDate } from '@pipeline/shared';
+import { appliedOccurredAt, isStage, localDate } from '@pipeline/shared';
 import {
   createApplicationSchema,
   moveStageSchema,
@@ -16,6 +16,7 @@ import {
   listForUser,
   ownedApplication,
   presentDetail,
+  queryList,
   applicationEvents,
 } from './service.js';
 
@@ -30,8 +31,16 @@ export function applicationRoutes(deps: AppDeps) {
   routes.get('/', async (c) => {
     const user = c.get('user');
     if (!user) return c.json({ error: MSG.unauthorized }, 401);
+    const stageParam = c.req.query('stage');
+    if (stageParam && !isStage(stageParam)) return c.json({ error: MSG.invalidInput }, 400);
     const items = await listForUser(deps.db, user, deps.clock.now());
-    return c.json({ applications: items });
+    return c.json(
+      queryList(
+        items,
+        c.req.query('q') ?? '',
+        stageParam && isStage(stageParam) ? stageParam : null,
+      ),
+    );
   });
 
   routes.post('/', async (c) => {
@@ -132,8 +141,15 @@ export function applicationRoutes(deps: AppDeps) {
   routes.post('/:id/stages', async (c) => {
     const user = c.get('user');
     if (!user) return c.json({ error: MSG.unauthorized }, 401);
-    const parsed = moveStageSchema.safeParse(await readJson(c));
-    if (!parsed.success) return c.json(invalidInput(parsed.error), 400);
+    const raw = await readJson(c);
+    const parsed = moveStageSchema.safeParse(raw);
+    if (!parsed.success) {
+      const tooLong = parsed.error.issues.some(
+        (issue) => issue.path[0] === 'note' && issue.code === 'too_big',
+      );
+      if (tooLong) return c.json({ field: 'note', message: MSG.noteTooLong }, 422);
+      return c.json(invalidInput(parsed.error), 400);
+    }
 
     const existing = await ownedApplication(deps.db, user.id, c.req.param('id'));
     if (!existing) return c.json({ error: MSG.notFound }, 404);

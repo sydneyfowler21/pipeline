@@ -71,19 +71,24 @@ export function daysBetween(startDate: string, endDate: string): number {
 }
 
 /**
- * UTC instant for 00:00:00 on a calendar date in `timeZone`.
- * Past Applied events use this so a later move at "now" is not before them.
+ * UTC instant for a clock time on a calendar date in `timeZone`.
+ * Used so a picked stage date stays on that local day.
  */
-export function localMidnightUtc(isoDate: string, timeZone: string): Date {
+export function localDateTimeUtc(
+  isoDate: string,
+  hour: number,
+  minute: number,
+  timeZone: string,
+): Date {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate);
-  if (!match) throw new Error('localMidnightUtc expects YYYY-MM-DD');
+  if (!match) throw new Error('localDateTimeUtc expects YYYY-MM-DD');
   const year = Number(match[1]);
   const month = Number(match[2]);
   const day = Number(match[3]);
-  let utc = Date.UTC(year, month - 1, day, 0, 0, 0);
+  let utc = Date.UTC(year, month - 1, day, hour, minute, 0);
   for (let attempt = 0; attempt < 4; attempt += 1) {
     const local = zonedParts(new Date(utc), timeZone);
-    const desired = Date.UTC(year, month - 1, day, 0, 0, 0);
+    const desired = Date.UTC(year, month - 1, day, hour, minute, 0);
     const actual = Date.UTC(
       local.year,
       local.month - 1,
@@ -97,6 +102,14 @@ export function localMidnightUtc(isoDate: string, timeZone: string): Date {
     if (diff === 0) break;
   }
   return new Date(utc);
+}
+
+/**
+ * UTC instant for 00:00:00 on a calendar date in `timeZone`.
+ * Past Applied events use this so a later move at "now" is not before them.
+ */
+export function localMidnightUtc(isoDate: string, timeZone: string): Date {
+  return localDateTimeUtc(isoDate, 0, 0, timeZone);
 }
 
 /**

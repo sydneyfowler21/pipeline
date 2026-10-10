@@ -2,7 +2,9 @@
 
 A job-search pipeline that keeps stage history instead of overwriting a status.
 
-The application screens are not in this pass. The API, auth, and a minimal client shell are.
+<img src="docs/images/readme-hero.png" width="100%" alt="pipeline: an application's stage history with revisits and time per stage, next to the list on mobile">
+
+Sign in, or try the demo, and move an application through Applied, Screen, Interview, Offer, and Closed. The README image is captured from a local test build with `npm run readme-hero`. Set `HERO_BASE_URL` to recapture it against a deployed origin.
 
 ## Run locally
 

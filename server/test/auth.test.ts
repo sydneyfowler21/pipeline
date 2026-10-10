@@ -261,7 +261,6 @@ describe('auth', () => {
     });
     expect((await login(app, jar, email, password)).status).toBe(200);
     expect((await login(app, other, email, password)).status).toBe(200);
-
     await withCsrf(app, jar);
     expect(
       (await api(app, jar, '/api/auth/request-reset', { method: 'POST', body: { email } })).status,

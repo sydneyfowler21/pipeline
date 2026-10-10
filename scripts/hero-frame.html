@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>pipeline hero frame</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 1600px;
+        height: 900px;
+        overflow: hidden;
+        background: #f2f1ec;
+      }
+      .canvas {
+        position: relative;
+        width: 1600px;
+        height: 900px;
+        background:
+          radial-gradient(560px 380px at 96% 0%, #e4dffb 0%, rgba(228, 223, 251, 0) 70%),
+          radial-gradient(520px 360px at 0% 100%, #e3efe8 0%, rgba(227, 239, 232, 0) 72%), #f2f1ec;
+      }
+      .browser {
+        position: absolute;
+        left: /*BROWSER_X*/ 80px;
+        top: /*BROWSER_Y*/ 64px;
+        width: /*BROWSER_W*/ 1180px;
+        height: /*BROWSER_H*/ 760px;
+        overflow: hidden;
+        border-radius: 16px;
+        background: #fff;
+        box-shadow: 0 24px 48px -12px rgba(23, 23, 28, 0.28);
+      }
+      .chrome {
+        display: flex;
+        height: 40px;
+        align-items: center;
+        gap: 8px;
+        padding: 0 14px;
+        background: #f7f7f5;
+        border-bottom: 1px solid #dad9d3;
+      }
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: #c8c7c0;
+      }
+      .url {
+        margin-left: 8px;
+        display: flex;
+        height: 32px;
+        align-items: center;
+        border-radius: 999px;
+        border: 1px solid #dad9d3;
+        background: #fff;
+        padding: 0 14px;
+        color: #5a5952;
+        font-family: 'Geist Sans', ui-sans-serif, system-ui, sans-serif;
+        font-size: 22px;
+        line-height: 26px;
+      }
+      #shot {
+        display: block;
+        width: /*DESKTOP_W*/ 1180px;
+        height: /*SHOT_H*/ 720px;
+        object-fit: fill;
+        background: #f7f7f5;
+      }
+      .phone {
+        position: absolute;
+        left: /*PHONE_X*/ 1260px;
+        top: /*PHONE_Y*/ 105px;
+        box-sizing: border-box;
+        width: /*PHONE_W*/ 340px;
+        height: /*PHONE_H*/ 690px;
+        padding: 12px;
+        border-radius: 44px;
+        background: #17171c;
+        box-shadow: 0 24px 48px -12px rgba(23, 23, 28, 0.28);
+      }
+      .phone img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        border-radius: 32px;
+        object-fit: cover;
+        object-position: top center;
+        background: #f7f7f5;
+      }
+      .phone.hidden {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="canvas">
+      <div class="browser">
+        <div class="chrome">
+          <span class="dot"></span>
+          <span class="dot"></span>
+          <span class="dot"></span>
+          <div class="url" id="url">/applications/acme-robotics</div>
+        </div>
+        <img id="shot" alt="" />
+      </div>
+      <div class="phone" id="phone-frame">
+        <img id="phone" alt="" />
+      </div>
+    </div>
+  </body>
+</html>

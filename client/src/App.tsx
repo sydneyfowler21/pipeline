@@ -1,38 +1,63 @@
-import { STAGES } from '@pipeline/shared';
-import { useQuery } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { useEffect } from 'react';
+import { Navigate, Route, Routes, useSearchParams } from 'react-router-dom';
+import { screenshotRequested } from '@/lib/copy';
+import { GuestOnly, Shell } from '@/components/shell';
+import { ForgotPage, ResetPage, SignInPage, SignUpPage, VerifyPage } from '@/pages/auth';
+import { ListPage } from '@/pages/list';
+import { ApplicationFormPage } from '@/pages/form';
+import { DetailPage } from '@/pages/detail';
+import { PreferencesPage, SecurityPage } from '@/pages/settings';
+
+function ScreenshotFlag() {
+  const [params] = useSearchParams();
+  useEffect(() => {
+    const enabled = screenshotRequested(import.meta.env.MODE, params.get('screenshot'));
+    if (enabled) document.documentElement.dataset.screenshot = '1';
+    else delete document.documentElement.dataset.screenshot;
+    return () => {
+      delete document.documentElement.dataset.screenshot;
+    };
+  }, [params]);
+  return null;
+}
 
 export function App() {
-  const health = useQuery({
-    queryKey: ['health'],
-    queryFn: async () => {
-      const response = await api('/api/health');
-      if (!response.ok) throw new Error('health failed');
-      return (await response.json()) as { ok: boolean };
-    },
-    retry: false,
-  });
-
-  const apiStatus = health.isPending ? 'checking' : health.data?.ok ? 'ok' : 'unavailable';
-
   return (
-    <div className="min-h-screen bg-neutral-50 text-neutral-900">
-      <header className="border-b border-neutral-200 bg-white">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4">
-          <h1 className="text-xl font-semibold tracking-tight">pipeline</h1>
-          <p className="text-sm text-neutral-600">API: {apiStatus}</p>
-        </div>
-      </header>
-      <main className="mx-auto max-w-5xl px-4 py-8">
-        <p className="max-w-2xl text-neutral-700">
-          Job-search pipeline with stage history, not overwritten status.
-        </p>
-        <p className="mt-4 max-w-2xl text-sm text-neutral-600">
-          Screens for sign-in, the list, and the timeline are built separately. This shell only
-          proves the client workspace is wired to the API.
-        </p>
-        <p className="mt-6 text-sm text-neutral-800">Stages: {STAGES.join(', ')}</p>
-      </main>
-    </div>
+    <>
+      <ScreenshotFlag />
+      <Routes>
+        <Route
+          path="/"
+          element={
+            <GuestOnly>
+              <SignInPage />
+            </GuestOnly>
+          }
+        />
+        <Route
+          path="/signup"
+          element={
+            <GuestOnly>
+              <SignUpPage />
+            </GuestOnly>
+          }
+        />
+        <Route path="/verify" element={<VerifyPage />} />
+        <Route path="/verify-email" element={<VerifyPage />} />
+        <Route path="/forgot" element={<ForgotPage />} />
+        <Route path="/reset" element={<ResetPage />} />
+        <Route path="/reset-password" element={<ResetPage />} />
+        <Route element={<Shell />}>
+          <Route path="/applications" element={<ListPage />} />
+          <Route path="/applications/new" element={<ApplicationFormPage />} />
+          <Route path="/applications/:id" element={<DetailPage />} />
+          <Route path="/applications/:id/edit" element={<ApplicationFormPage />} />
+          <Route path="/settings" element={<Navigate to="/settings/security" replace />} />
+          <Route path="/settings/security" element={<SecurityPage />} />
+          <Route path="/settings/preferences" element={<PreferencesPage />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </>
   );
 }
