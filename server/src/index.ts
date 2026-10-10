@@ -6,12 +6,13 @@ import { createClock, systemClock } from './clock.js';
 import { createDb } from './db/client.js';
 import { runMigrations } from './db/migrate.js';
 import { deleteExpiredDemoUsers } from './demo.js';
-import { loadEnv } from './env.js';
+import { loadEnv, migrationDatabaseUrl } from './env.js';
 import { createMailTransport } from './mail/transport.js';
 
 const env = loadEnv();
 await dummyPasswordHash();
-await runMigrations(env.DATABASE_URL);
+await runMigrations(migrationDatabaseUrl(env));
+console.info('migrations applied');
 const { db, sql } = createDb(env.DATABASE_URL);
 const fixedNow = process.env.APP_NOW?.trim();
 const clock =

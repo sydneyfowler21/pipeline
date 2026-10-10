@@ -7,6 +7,10 @@ export type MailTransportName = 'resend' | 'console' | 'memory';
 export type Env = {
   NODE_ENV: string;
   DATABASE_URL: string;
+  /** Direct Neon URL for migrations. Used before DIRECT_URL when set. */
+  DATABASE_URL_UNPOOLED?: string;
+  /** Direct URL for migrations when DATABASE_URL_UNPOOLED is unset. */
+  DIRECT_URL?: string;
   SESSION_SECRET: string;
   ENCRYPTION_KEY: string;
   APP_URL: string;
@@ -31,6 +35,22 @@ function required(name: string): string {
   const value = blankToUndefined(process.env[name]);
   if (!value) throw new Error(`Missing required env var ${name}`);
   return value;
+}
+
+function optionalPostgresUrl(name: string): string | undefined {
+  const value = blankToUndefined(process.env[name]);
+  if (!value) return undefined;
+  if (!value.startsWith('postgres://') && !value.startsWith('postgresql://')) {
+    throw new Error(`${name} must be a postgres connection string`);
+  }
+  return value;
+}
+
+/** Migrations prefer a direct URL. Queries keep using DATABASE_URL. */
+export function migrationDatabaseUrl(
+  env: Pick<Env, 'DATABASE_URL' | 'DATABASE_URL_UNPOOLED' | 'DIRECT_URL'>,
+): string {
+  return env.DATABASE_URL_UNPOOLED ?? env.DIRECT_URL ?? env.DATABASE_URL;
 }
 
 function requireLong(name: string, min: number): string {
@@ -73,6 +93,8 @@ export function loadEnv(): Env {
   if (!databaseUrl.startsWith('postgres://') && !databaseUrl.startsWith('postgresql://')) {
     throw new Error('DATABASE_URL must be a postgres connection string');
   }
+  const databaseUrlUnpooled = optionalPostgresUrl('DATABASE_URL_UNPOOLED');
+  const directUrl = optionalPostgresUrl('DIRECT_URL');
 
   const appUrl = required('APP_URL');
   try {
@@ -97,6 +119,8 @@ export function loadEnv(): Env {
   return {
     NODE_ENV: nodeEnv,
     DATABASE_URL: databaseUrl,
+    DATABASE_URL_UNPOOLED: databaseUrlUnpooled,
+    DIRECT_URL: directUrl,
     SESSION_SECRET: requireLong('SESSION_SECRET', 32),
     ENCRYPTION_KEY: encryptionKey,
     APP_URL: appUrl.replace(/\/$/, ''),
